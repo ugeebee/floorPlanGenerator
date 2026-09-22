@@ -117,6 +117,8 @@ export const THEME_CONFIGS = {
 // Fixed Architectural CAD World Scale: exactly 100 SVG units per meter
 // 1.0 m = 100 units; 10 cm = 10 units; 1.0 cm = 1 unit; 1.0 mm = 0.1 unit
 export const BASE_PPM = 100;
+export const SHEET_MARGIN_METERS = 2.0;
+export const SHEET_MARGIN_PX = SHEET_MARGIN_METERS * BASE_PPM; // Exactly 200 SVG units
 
 const FloorPlan: React.FC<FloorPlanProps> = ({
   room,
@@ -147,8 +149,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
 
   // Drawing Sheet Margins: 2.0 meters (200 units) on all sides
   // 200 is an exact integer multiple of 100 (major), 50 (medium), and 10 (minor)
-  const marginMeters = 2.0;
-  const marginPx = marginMeters * BASE_PPM; // Exactly 200 SVG units
+  const marginPx = SHEET_MARGIN_PX; // Exactly 200 SVG units
 
   // North-West interior corner (0,0) of the room in SVG world coordinates
   const originX = marginPx; // 200
@@ -346,7 +347,9 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
   return (
     <div className="relative w-full h-full flex items-center justify-center select-none overflow-hidden bg-white">
       <svg
+        id="floorplan-canvas-svg"
         ref={svgRef}
+        xmlns="http://www.w3.org/2000/svg"
         className="w-full h-full cursor-grab active:cursor-grabbing"
         viewBox={viewBox}
         onPointerMove={handlePointerMove}
@@ -445,6 +448,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
 
         {/* 1. Infinite Canvas White Background */}
         <rect
+          data-export-bg="true"
           x={viewBoxX - 5000}
           y={viewBoxY - 5000}
           width={viewWidth + 10000}
@@ -455,6 +459,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
         {/* 2. Subdivided Architectural Grid (Exactly 10 subdivisions per major unit) */}
         {showGrid && (
           <rect
+            data-export-grid="true"
             x={viewBoxX - 5000}
             y={viewBoxY - 5000}
             width={viewWidth + 10000}
@@ -623,7 +628,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
 
           {/* Snapped Corner Indicator Badge */}
           <g transform="translate(-76, -28)">
-            <rect width="72" height="22" rx="4" fill="#ffffff" stroke="#ef4444" strokeWidth="1.2" filter="drop-shadow(0 1px 3px rgba(0,0,0,0.15))" />
+            <rect width="72" height="22" rx="4" fill="#ffffff" stroke="#ef4444" strokeWidth="1.2" style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.15))' }} />
             <text x="36" y="15" textAnchor="middle" fill="#ef4444" fontSize="11" fontFamily="system-ui, monospace" fontWeight="bold">
               (0, 0) SNAP
             </text>
@@ -849,7 +854,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
                   fill={isSelected ? colors.selectedGlow : colors.tagBg}
                   stroke={isSelected ? '#ffffff' : colors.tagBorder}
                   strokeWidth="1.5"
-                  filter="drop-shadow(0 2px 4px rgba(0,0,0,0.15))"
+                  style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))' }}
                 />
                 <text
                   x="0"

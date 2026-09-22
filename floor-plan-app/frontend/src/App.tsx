@@ -1,5 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
-import FloorPlan, { RoomConfig, Opening, WallSide, FloorPlanTheme, UnitSystem, formatDistance } from './FloorPlan';
+import FloorPlan, {
+  RoomConfig,
+  Opening,
+  WallSide,
+  FloorPlanTheme,
+  UnitSystem,
+  formatDistance,
+  BASE_PPM,
+  SHEET_MARGIN_PX,
+} from './FloorPlan';
 import {
   ZoomIn,
   ZoomOut,
@@ -95,6 +104,10 @@ function App() {
 
   // Active Sidebar Tab
   const [activeTab, setActiveTab] = useState<'dimensions' | 'openings' | 'analytics'>('dimensions');
+
+  // Export Loading States
+  const [isExportingPng, setIsExportingPng] = useState(false);
+  const [isExportingSvg, setIsExportingSvg] = useState(false);
 
   // Backend validation state
   const [backendStatus, setBackendStatus] = useState<string>('idle');
@@ -209,87 +222,188 @@ function App() {
     return () => controller.abort();
   }, [room]);
 
+  // Helper to extract and prepare a standalone, full-sheet architectural SVG clone
+  const getExportSvgData = () => {
+    const svgEl = document.getElementById('floorplan-canvas-svg') as SVGSVGElement | null;
+    if (!svgEl) {
+      console.error('Floor plan SVG canvas element not found');
+      return null;
+    }
+
+    const clone = svgEl.cloneNode(true) as SVGSVGElement;
+
+    // Full drawing sheet dimensions (un-clipped, 1:1 architectural scale)
+    const sheetWidth = Math.round(room.breadth * BASE_PPM + SHEET_MARGIN_PX * 2);
+    const sheetHeight = Math.round(room.length * BASE_PPM + SHEET_MARGIN_PX * 2);
+
+    // Apply standalone XML & SVG attributes
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+    clone.setAttribute('width', `${sheetWidth}`);
+    clone.setAttribute('height', `${sheetHeight}`);
+    clone.setAttribute('viewBox', `0 0 ${sheetWidth} ${sheetHeight}`);
+    clone.removeAttribute('id');
+    clone.removeAttribute('style');
+    clone.setAttribute('class', 'floor-plan-sheet');
+
+    // Adjust background & grid to cover the full sheet bounds cleanly
+    const bgRect = clone.querySelector('[data-export-bg="true"]');
+    if (bgRect) {
+      bgRect.setAttribute('x', '0');
+      bgRect.setAttribute('y', '0');
+      bgRect.setAttribute('width', `${sheetWidth}`);
+      bgRect.setAttribute('height', `${sheetHeight}`);
+    }
+
+    const gridRect = clone.querySelector('[data-export-grid="true"]');
+    if (gridRect) {
+      gridRect.setAttribute('x', '0');
+      gridRect.setAttribute('y', '0');
+      gridRect.setAttribute('width', `${sheetWidth}`);
+      gridRect.setAttribute('height', `${sheetHeight}`);
+    }
+
+    // Clean up interactive cursor styles or drag markers
+    clone.querySelectorAll('[data-drag]').forEach((el) => el.removeAttribute('data-drag'));
+
+    return { clone, sheetWidth, sheetHeight };
+  };
+
   // Export to PNG with Title Block
   const exportAsPng = () => {
-    const svgEl = document.querySelector('svg');
-    if (!svgEl) return;
+    try {
+      setIsExportingPng(true);
+      const exportData = getExportSvgData();
+      if (!exportData) {
+        setIsExportingPng(false);
+        return;
+      }
 
-    const svgData = new XMLSerializer().serializeToString(svgEl);
-    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-    const URL = window.URL || window.webkitURL || window;
-    const blobURL = URL.createObjectURL(svgBlob);
+      const { clone, sheetWidth, sheetHeight } = exportData;
+      let svgString = new XMLSerializer().serializeToString(clone);
 
-    const image = new Image();
-    image.onload = () => {
-      const canvas = document.createElement('canvas');
-      const scale = 2;
-      canvas.width = svgEl.clientWidth * scale || 1920;
-      canvas.height = svgEl.clientHeight * scale || 1080;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      if (!svgString.includes('xmlns="http://www.w3.org/2000/svg"')) {
+        svgString = svgString.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+      }
 
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      // Convert SVG to data URL via base64 encoding to prevent cross-origin/canvas tainting
+      const svgBase64 = window.btoa(unescape(encodeURIComponent(svgString)));
+      const imageSrc = `data:image/svg+xml;base64,${svgBase64}`;
 
-      // Title Block in Bottom Right Corner
-      const tbWidth = 380;
-      const tbHeight = 96;
-      const tbX = canvas.width - tbWidth - 28;
-      const tbY = canvas.height - tbHeight - 28;
+      const image = new Image();
+      image.onload = () => {
+        try {
+          const scale = 2; // High-resolution 2x CAD export
+          const canvas = document.createElement('canvas');
+          canvas.width = sheetWidth * scale;
+          canvas.height = sheetHeight * scale;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            setIsExportingPng(false);
+            return;
+          }
 
-      ctx.fillStyle = 'rgba(255,255,255,0.98)';
-      ctx.strokeStyle = '#0f172a';
-      ctx.lineWidth = 2;
-      ctx.fillRect(tbX, tbY, tbWidth, tbHeight);
-      ctx.strokeRect(tbX, tbY, tbWidth, tbHeight);
+          // Background fill
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      ctx.fillStyle = '#0f172a';
-      ctx.font = 'bold 20px system-ui, sans-serif';
-      ctx.fillText(room.name || 'FLOOR PLAN', tbX + 18, tbY + 30);
+          // Draw floor plan SVG
+          ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
 
-      ctx.fillStyle = '#475569';
-      ctx.font = '15px system-ui, monospace';
-      ctx.fillText(
-        `DIMENSIONS: ${formatDistance(room.breadth, unit)} × ${formatDistance(room.length, unit)}`,
-        tbX + 18,
-        tbY + 56
-      );
-      ctx.fillText(
-        unit === 'imperial'
-          ? `AREA: ${grossAreaSqFt.toFixed(1)} sq ft · SCALE 1/4" = 1'-0"`
-          : `AREA: ${grossArea.toFixed(2)} m² · SCALE 1:50`,
-        tbX + 18,
-        tbY + 78
-      );
+          // Title Block in Bottom Right Corner (scaled proportionally)
+          const tbWidth = 380 * scale;
+          const tbHeight = 96 * scale;
+          const tbX = canvas.width - tbWidth - 28 * scale;
+          const tbY = canvas.height - tbHeight - 28 * scale;
+          const padX = 18 * scale;
 
-      const pngURL = canvas.toDataURL('image/png');
-      const dlLink = document.createElement('a');
-      dlLink.download = `${(room.name || 'floor-plan').toLowerCase().replace(/\s+/g, '-')}-2d.png`;
-      dlLink.href = pngURL;
-      document.body.appendChild(dlLink);
-      dlLink.click();
-      document.body.removeChild(dlLink);
-      URL.revokeObjectURL(blobURL);
-    };
-    image.src = blobURL;
+          ctx.fillStyle = 'rgba(255,255,255,0.98)';
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = 2 * scale;
+          ctx.fillRect(tbX, tbY, tbWidth, tbHeight);
+          ctx.strokeRect(tbX, tbY, tbWidth, tbHeight);
+
+          ctx.fillStyle = '#0f172a';
+          ctx.font = `bold ${20 * scale}px system-ui, sans-serif`;
+          ctx.fillText(room.name || 'FLOOR PLAN', tbX + padX, tbY + 30 * scale);
+
+          ctx.fillStyle = '#475569';
+          ctx.font = `${14 * scale}px system-ui, monospace`;
+          ctx.fillText(
+            `DIMENSIONS: ${formatDistance(room.breadth, unit)} × ${formatDistance(room.length, unit)}`,
+            tbX + padX,
+            tbY + 56 * scale
+          );
+          ctx.fillText(
+            unit === 'imperial'
+              ? `AREA: ${grossAreaSqFt.toFixed(1)} sq ft · SCALE 1/4" = 1'-0"`
+              : `AREA: ${grossArea.toFixed(2)} m² · SCALE 1:50`,
+            tbX + padX,
+            tbY + 78 * scale
+          );
+
+          canvas.toBlob((blob) => {
+            setIsExportingPng(false);
+            if (!blob) return;
+            const pngURL = window.URL.createObjectURL(blob);
+            const dlLink = document.createElement('a');
+            dlLink.download = `${(room.name || 'floor-plan').toLowerCase().replace(/\s+/g, '-')}-2d.png`;
+            dlLink.href = pngURL;
+            document.body.appendChild(dlLink);
+            dlLink.click();
+            document.body.removeChild(dlLink);
+            window.URL.revokeObjectURL(pngURL);
+          }, 'image/png');
+        } catch (canvasErr) {
+          console.error('Error drawing canvas for PNG export:', canvasErr);
+          setIsExportingPng(false);
+        }
+      };
+
+      image.onerror = (err) => {
+        console.error('Failed to load SVG into Image for PNG export:', err);
+        setIsExportingPng(false);
+      };
+
+      image.src = imageSrc;
+    } catch (err) {
+      console.error('Failed to export PNG:', err);
+      setIsExportingPng(false);
+    }
   };
 
   // Export as SVG
   const exportAsSvg = () => {
-    const svgEl = document.querySelector('svg');
-    if (!svgEl) return;
+    try {
+      setIsExportingSvg(true);
+      const exportData = getExportSvgData();
+      if (!exportData) {
+        setIsExportingSvg(false);
+        return;
+      }
 
-    const svgData = new XMLSerializer().serializeToString(svgEl);
-    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-    const url = window.URL.createObjectURL(blob);
-    const dlLink = document.createElement('a');
-    dlLink.href = url;
-    dlLink.download = `${(room.name || 'floor-plan').toLowerCase().replace(/\s+/g, '-')}-2d.svg`;
-    document.body.appendChild(dlLink);
-    dlLink.click();
-    document.body.removeChild(dlLink);
-    window.URL.revokeObjectURL(url);
+      const { clone } = exportData;
+      let svgString = new XMLSerializer().serializeToString(clone);
+
+      if (!svgString.includes('xmlns="http://www.w3.org/2000/svg"')) {
+        svgString = svgString.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+      }
+
+      const svgDoc = `<?xml version="1.0" encoding="UTF-8"?>\n<!-- Architectural 2D Floor Plan CAD Export -->\n${svgString}`;
+      const blob = new Blob([svgDoc], { type: 'image/svg+xml;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+      const dlLink = document.createElement('a');
+      dlLink.href = url;
+      dlLink.download = `${(room.name || 'floor-plan').toLowerCase().replace(/\s+/g, '-')}-2d.svg`;
+      document.body.appendChild(dlLink);
+      dlLink.click();
+      document.body.removeChild(dlLink);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export SVG:', err);
+    } finally {
+      setIsExportingSvg(false);
+    }
   };
 
   // Save JSON
@@ -401,18 +515,24 @@ function App() {
           {/* Export Buttons */}
           <button
             onClick={exportAsPng}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition shadow-sm"
+            disabled={isExportingPng}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition shadow-sm ${
+              isExportingPng ? 'opacity-70 cursor-wait' : ''
+            }`}
           >
             <ImageIcon size={16} />
-            Export PNG
+            {isExportingPng ? 'Exporting...' : 'Export PNG'}
           </button>
 
           <button
             onClick={exportAsSvg}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold transition border border-slate-300 shadow-sm"
+            disabled={isExportingSvg}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold transition border border-slate-300 shadow-sm ${
+              isExportingSvg ? 'opacity-70 cursor-wait' : ''
+            }`}
           >
             <FileCode size={16} />
-            SVG
+            {isExportingSvg ? 'Exporting...' : 'SVG'}
           </button>
         </div>
       </header>
