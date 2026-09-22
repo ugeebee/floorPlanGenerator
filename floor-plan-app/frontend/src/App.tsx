@@ -430,6 +430,12 @@ function App() {
           const data = await res.json();
           if (Array.isArray(data) && data.length > 0) {
             setMultiPresets(data);
+            setActiveMultiIndex((currIdx) => {
+              if (data[currIdx]) {
+                setMultiRooms(JSON.parse(JSON.stringify(data[currIdx].rooms)));
+              }
+              return currIdx;
+            });
           }
         }
       } catch {
@@ -923,17 +929,27 @@ function App() {
                 ))}
               </select>
             ) : (
-              <select
-                value={activeMultiIndex}
-                onChange={(e) => handleSelectMultiPreset(Number(e.target.value))}
-                className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-slate-800 font-medium focus:outline-none focus:border-blue-600"
-              >
-                {multiPresets.map((p, idx) => (
-                  <option key={p.name} value={idx}>
-                    {p.name} ({p.rooms.length} Rooms)
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={activeMultiIndex}
+                  onChange={(e) => handleSelectMultiPreset(Number(e.target.value))}
+                  className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-slate-800 font-medium focus:outline-none focus:border-blue-600"
+                >
+                  {multiPresets.map((p, idx) => (
+                    <option key={p.name} value={idx}>
+                      {p.name} ({p.rooms.length} Rooms)
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => handleSelectMultiPreset(activeMultiIndex)}
+                  title="Reload / Reset this preset layout"
+                  className="px-2.5 py-1 text-xs font-semibold text-slate-700 hover:text-blue-700 bg-slate-100 hover:bg-blue-50 border border-slate-300 hover:border-blue-300 rounded-lg transition flex items-center gap-1 cursor-pointer"
+                >
+                  ↺ Reset
+                </button>
+              </div>
             )}
           </div>
         </div>
