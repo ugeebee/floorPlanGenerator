@@ -245,6 +245,283 @@ function computeSnappedRoomPosition(
   };
 }
 
+// Atomic solid wall piece for sub-segment wall drafting
+export type SolidWallPiece = {
+  start: number;
+  end: number;
+  isShared: boolean;
+};
+
+// Test if a specific position along a room's wall is touching another room
+export function isPositionShared(
+  rm: RoomConfig,
+  wall: WallSide,
+  localPos: number,
+  allRooms: RoomConfig[]
+): boolean {
+  const rx = rm.x || 0;
+  const ry = rm.y || 0;
+  const rw = rm.breadth;
+  const rh = rm.length;
+
+  for (const other of allRooms) {
+    if (other.id === rm.id) continue;
+    const ox = other.x || 0;
+    const oy = other.y || 0;
+    const ow = other.breadth;
+    const oh = other.length;
+
+    if (wall === 'N') {
+      if (Math.abs(oy + oh - ry) < 0.04) {
+        const worldX = rx + localPos;
+        if (worldX >= ox - 0.02 && worldX <= ox + ow + 0.02) return true;
+      }
+    } else if (wall === 'S') {
+      if (Math.abs(oy - (ry + rh)) < 0.04) {
+        const worldX = rx + localPos;
+        if (worldX >= ox - 0.02 && worldX <= ox + ow + 0.02) return true;
+      }
+    } else if (wall === 'W') {
+      if (Math.abs(ox + ow - rx) < 0.04) {
+        const worldY = ry + localPos;
+        if (worldY >= oy - 0.02 && worldY <= oy + oh + 0.02) return true;
+      }
+    } else if (wall === 'E') {
+      if (Math.abs(ox - (rx + rw)) < 0.04) {
+        const worldY = ry + localPos;
+        if (worldY >= oy - 0.02 && worldY <= oy + oh + 0.02) return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Test if an outer corner is fully exterior (to render corner junction caps)
+export function isCornerExterior(
+  rm: RoomConfig,
+  corner: 'NW' | 'NE' | 'SW' | 'SE',
+  allRooms: RoomConfig[]
+): boolean {
+  const rw = rm.breadth;
+  const rh = rm.length;
+  const EPS = 0.05;
+
+  if (corner === 'NW') {
+    return !isPositionShared(rm, 'N', EPS, allRooms) && !isPositionShared(rm, 'W', EPS, allRooms);
+  }
+  if (corner === 'NE') {
+    return !isPositionShared(rm, 'N', rw - EPS, allRooms) && !isPositionShared(rm, 'E', EPS, allRooms);
+  }
+  if (corner === 'SW') {
+    return !isPositionShared(rm, 'S', EPS, allRooms) && !isPositionShared(rm, 'W', rh - EPS, allRooms);
+  }
+  if (corner === 'SE') {
+    return !isPositionShared(rm, 'S', rw - EPS, allRooms) && !isPositionShared(rm, 'E', rh - EPS, allRooms);
+  }
+  return false;
+}
+
+// Granular sub-segment wall generator: decomposes any wall side into shared & exterior segments
+// and cuts out doors/windows with precision
+export function getSolidWallPieces(
+  rm: RoomConfig,
+  wallSide: WallSide,
+  allRooms: RoomConfig[]
+): SolidWallPiece[] {
+  const rx = rm.x || 0;
+  const ry = rm.y || 0;
+  const rw = rm.breadth;
+  const rh = rm.length;
+  const wallLen = wallSide === 'N' || wallSide === 'S' ? rw : rh;
+
+  // 1. Find all shared intervals along this wall with other rooms
+  type SharedInterval = { start: number; end: number; otherId: string; shouldRender: boolean };
+  const sharedIntervals: SharedInterval[] = [];
+
+  for (const other of allRooms) {
+    if (other.id === rm.id) continue;
+    const ox = other.x || 0;
+    const oy = other.y || 0;
+    const ow = other.breadth;
+    const oh = other.length;
+
+    if (wallSide === 'N') {
+      if (Math.abs(oy + oh - ry) < 0.04) {
+        const overlapStart = Math.max(rx, ox);
+        const overlapEnd = Math.min(rx + rw, ox + ow);
+        if (overlapEnd - overlapStart > 0.02) {
+          sharedIntervals.push({
+            start: Math.max(0, overlapStart - rx),
+            end: Math.min(wallLen, overlapEnd - rx),
+            otherId: other.id!,
+            shouldRender: false, // The room above (other) renders horizontal shared partition
+          });
+        }
+      }
+    } else if (wallSide === 'S') {
+      if (Math.abs(oy - (ry + rh)) < 0.04) {
+        const overlapStart = Math.max(rx, ox);
+        const overlapEnd = Math.min(rx + rw, ox + ow);
+        if (overlapEnd - overlapStart > 0.02) {
+          sharedIntervals.push({
+            start: Math.max(0, overlapStart - rx),
+            end: Math.min(wallLen, overlapEnd - rx),
+            otherId: other.id!,
+            shouldRender: true, // rm has smaller Y, so rm renders horizontal shared partition
+          });
+        }
+      }
+    } else if (wallSide === 'W') {
+      if (Math.abs(ox + ow - rx) < 0.04) {
+        const overlapStart = Math.max(ry, oy);
+        const overlapEnd = Math.min(ry + rh, oy + oh);
+        if (overlapEnd - overlapStart > 0.02) {
+          sharedIntervals.push({
+            start: Math.max(0, overlapStart - ry),
+            end: Math.min(wallLen, overlapEnd - ry),
+            otherId: other.id!,
+            shouldRender: false, // The room to the left (other) renders vertical shared partition
+          });
+        }
+      }
+    } else if (wallSide === 'E') {
+      if (Math.abs(ox - (rx + rw)) < 0.04) {
+        const overlapStart = Math.max(ry, oy);
+        const overlapEnd = Math.min(ry + rh, oy + oh);
+        if (overlapEnd - overlapStart > 0.02) {
+          sharedIntervals.push({
+            start: Math.max(0, overlapStart - ry),
+            end: Math.min(wallLen, overlapEnd - ry),
+            otherId: other.id!,
+            shouldRender: true, // rm has smaller X, so rm renders vertical shared partition
+          });
+        }
+      }
+    }
+  }
+
+  // 2. Sort shared intervals by start position
+  sharedIntervals.sort((a, b) => a.start - b.start);
+
+  // 3. Partition [0, wallLen] into contiguous segments (shared vs exterior)
+  type BaseSegment = { start: number; end: number; isShared: boolean; shouldRender: boolean; otherId?: string };
+  const segments: BaseSegment[] = [];
+  let cur = 0;
+
+  for (const interval of sharedIntervals) {
+    if (interval.start - cur > 0.02) {
+      segments.push({
+        start: cur,
+        end: interval.start,
+        isShared: false,
+        shouldRender: true,
+      });
+    }
+    segments.push({
+      start: interval.start,
+      end: interval.end,
+      isShared: true,
+      shouldRender: interval.shouldRender,
+      otherId: interval.otherId,
+    });
+    cur = Math.max(cur, interval.end);
+  }
+
+  if (wallLen - cur > 0.02) {
+    segments.push({
+      start: cur,
+      end: wallLen,
+      isShared: false,
+      shouldRender: true,
+    });
+  }
+
+  if (segments.length === 0) {
+    segments.push({
+      start: 0,
+      end: wallLen,
+      isShared: false,
+      shouldRender: true,
+    });
+  }
+
+  // 4. For each segment to render, carve out openings
+  const solidPieces: SolidWallPiece[] = [];
+
+  for (const seg of segments) {
+    if (!seg.shouldRender) continue;
+
+    const relevantOpenings: Array<{ start: number; end: number }> = [];
+
+    // Openings on rm for this wallSide
+    for (const op of rm.openings) {
+      if (op.wall === wallSide) {
+        const opStart = op.position;
+        const opEnd = op.position + op.width;
+        if (opEnd > seg.start && opStart < seg.end) {
+          relevantOpenings.push({
+            start: Math.max(seg.start, opStart),
+            end: Math.min(seg.end, opEnd),
+          });
+        }
+      }
+    }
+
+    // Openings on adjoining room's opposing wall (if shared)
+    if (seg.isShared && seg.otherId) {
+      const other = allRooms.find((r) => r.id === seg.otherId);
+      if (other) {
+        const oppositeWall: WallSide =
+          wallSide === 'N' ? 'S' : wallSide === 'S' ? 'N' : wallSide === 'W' ? 'E' : 'W';
+        const ox = other.x || 0;
+        const oy = other.y || 0;
+
+        for (const oOp of other.openings) {
+          if (oOp.wall === oppositeWall) {
+            let oStartInRm = 0;
+            if (wallSide === 'N' || wallSide === 'S') {
+              oStartInRm = ox + oOp.position - rx;
+            } else {
+              oStartInRm = oy + oOp.position - ry;
+            }
+            const oEndInRm = oStartInRm + oOp.width;
+            if (oEndInRm > seg.start && oStartInRm < seg.end) {
+              relevantOpenings.push({
+                start: Math.max(seg.start, oStartInRm),
+                end: Math.min(seg.end, oEndInRm),
+              });
+            }
+          }
+        }
+      }
+    }
+
+    relevantOpenings.sort((a, b) => a.start - b.start);
+
+    let pieceStart = seg.start;
+    for (const op of relevantOpenings) {
+      if (op.start - pieceStart > 0.02) {
+        solidPieces.push({
+          start: pieceStart,
+          end: op.start,
+          isShared: seg.isShared,
+        });
+      }
+      pieceStart = Math.max(pieceStart, op.end);
+    }
+
+    if (seg.end - pieceStart > 0.02) {
+      solidPieces.push({
+        start: pieceStart,
+        end: seg.end,
+        isShared: seg.isShared,
+      });
+    }
+  }
+
+  return solidPieces;
+}
+
 const FloorPlan: React.FC<FloorPlanProps> = ({
   room,
   rooms,
@@ -418,73 +695,6 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
     return { x: xm, y: ym };
   }, [originX, originY]);
 
-  // Identify shared partition walls between adjoining rooms
-  // Returns a map of shared horizontal and vertical partition lines
-  const sharedPartitions = useMemo(() => {
-    const horizontal: Array<{ y: number; startX: number; endX: number; room1Id: string; room2Id: string }> = [];
-    const vertical: Array<{ x: number; startY: number; endY: number; room1Id: string; room2Id: string }> = [];
-
-    for (let i = 0; i < allRooms.length; i++) {
-      const r1 = allRooms[i];
-      const r1X = r1.x || 0;
-      const r1Y = r1.y || 0;
-
-      for (let j = i + 1; j < allRooms.length; j++) {
-        const r2 = allRooms[j];
-        const r2X = r2.x || 0;
-        const r2Y = r2.y || 0;
-
-        // Check vertical adjacency (r1 East == r2 West or r2 East == r1 West)
-        if (Math.abs(r1X + r1.breadth - r2X) < 0.04) {
-          const startY = Math.max(r1Y, r2Y);
-          const endY = Math.min(r1Y + r1.length, r2Y + r2.length);
-          if (endY - startY > 0.05) {
-            vertical.push({ x: r2X, startY, endY, room1Id: r1.id!, room2Id: r2.id! });
-          }
-        } else if (Math.abs(r2X + r2.breadth - r1X) < 0.04) {
-          const startY = Math.max(r1Y, r2Y);
-          const endY = Math.min(r1Y + r1.length, r2Y + r2.length);
-          if (endY - startY > 0.05) {
-            vertical.push({ x: r1X, startY, endY, room1Id: r2.id!, room2Id: r1.id! });
-          }
-        }
-
-        // Check horizontal adjacency (r1 South == r2 North or r2 South == r1 North)
-        if (Math.abs(r1Y + r1.length - r2Y) < 0.04) {
-          const startX = Math.max(r1X, r2X);
-          const endX = Math.min(r1X + r1.breadth, r2X + r2.breadth);
-          if (endX - startX > 0.05) {
-            horizontal.push({ y: r2Y, startX, endX, room1Id: r1.id!, room2Id: r2.id! });
-          }
-        } else if (Math.abs(r2Y + r2.length - r1Y) < 0.04) {
-          const startX = Math.max(r1X, r2X);
-          const endX = Math.min(r1X + r1.breadth, r2X + r2.breadth);
-          if (endX - startX > 0.05) {
-            horizontal.push({ y: r1Y, startX, endX, room1Id: r2.id!, room2Id: r1.id! });
-          }
-        }
-      }
-    }
-
-    return { horizontal, vertical };
-  }, [allRooms]);
-
-  // Helper to test if a room wall is a shared interior partition
-  const isWallShared = useCallback((rx: number, ry: number, rw: number, rh: number, wall: WallSide): boolean => {
-    if (wall === 'N') {
-      return sharedPartitions.horizontal.some((p) => Math.abs(p.y - ry) < 0.05 && p.startX <= rx + rw && p.endX >= rx);
-    }
-    if (wall === 'S') {
-      return sharedPartitions.horizontal.some((p) => Math.abs(p.y - (ry + rh)) < 0.05 && p.startX <= rx + rw && p.endX >= rx);
-    }
-    if (wall === 'W') {
-      return sharedPartitions.vertical.some((p) => Math.abs(p.x - rx) < 0.05 && p.startY <= ry + rh && p.endY >= ry);
-    }
-    if (wall === 'E') {
-      return sharedPartitions.vertical.some((p) => Math.abs(p.x - (rx + rw)) < 0.05 && p.startY <= ry + rh && p.endY >= ry);
-    }
-    return false;
-  }, [sharedPartitions]);
 
   // Pointer move handler (drag rooms, drag openings, resize handles, pan, cursor tracking)
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -867,138 +1077,229 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
           const rw = rm.breadth;
           const rh = rm.length;
 
-          // Check which walls are exterior envelope vs. interior shared partitions
-          const isNorthShared = isWallShared(rx, ry, rw, rh, 'N');
-          const isSouthShared = isWallShared(rx, ry, rw, rh, 'S');
-          const isWestShared = isWallShared(rx, ry, rw, rh, 'W');
-          const isEastShared = isWallShared(rx, ry, rw, rh, 'E');
+          const northPieces = getSolidWallPieces(rm, 'N', allRooms);
+          const southPieces = getSolidWallPieces(rm, 'S', allRooms);
+          const westPieces = getSolidWallPieces(rm, 'W', allRooms);
+          const eastPieces = getSolidWallPieces(rm, 'E', allRooms);
 
-          // Segment calculations cutting out doors/windows
-          const getSegments = (wallSide: WallSide, length: number) => {
-            const ops = rm.openings.filter((o) => o.wall === wallSide).sort((a, b) => a.position - b.position);
-            const segs: Array<{ start: number; end: number }> = [];
-            let cur = 0;
-            ops.forEach((o) => {
-              const start = Math.max(0, Math.min(length, o.position));
-              const end = Math.max(0, Math.min(length, o.position + o.width));
-              if (start > cur) segs.push({ start: cur, end: start });
-              cur = Math.max(cur, end);
-            });
-            if (cur < length) segs.push({ start: cur, end: length });
-            return segs;
-          };
-
-          const northSegs = getSegments('N', rw);
-          const southSegs = getSegments('S', rw);
-          const westSegs = getSegments('W', rh);
-          const eastSegs = getSegments('E', rh);
+          const hasNwCorner = isCornerExterior(rm, 'NW', allRooms);
+          const hasNeCorner = isCornerExterior(rm, 'NE', allRooms);
+          const hasSwCorner = isCornerExterior(rm, 'SW', allRooms);
+          const hasSeCorner = isCornerExterior(rm, 'SE', allRooms);
 
           return (
             <g key={`room-walls-${rm.id}`}>
-              {/* North Wall: render only if exterior OR if rm is the top-most room */}
-              {(!isNorthShared || !sharedPartitions.horizontal.some(p => Math.abs(p.y - ry) < 0.05 && p.room2Id === rm.id)) && (
-                northSegs.map((seg, i) => {
-                  const wallThick = isNorthShared ? intWallT : extWallT;
-                  return (
-                    <g key={`nw-${rm.id}-${i}`}>
-                      <rect
-                        x={toScreenX(rx + seg.start)}
-                        y={toScreenY(ry - wallThick)}
-                        width={(seg.end - seg.start) * BASE_PPM}
-                        height={wallThick * BASE_PPM}
-                        fill={colors.wallFill}
-                        stroke={colors.wallStroke}
-                        strokeWidth="1.5"
-                      />
-                      {!isNorthShared && (
-                        <rect
-                          x={toScreenX(rx + seg.start)}
-                          y={toScreenY(ry - wallThick)}
-                          width={(seg.end - seg.start) * BASE_PPM}
-                          height={wallThick * BASE_PPM}
-                          fill={`url(#wall-hatch-${theme})`}
-                        />
-                      )}
-                    </g>
-                  );
-                })
-              )}
+              {/* North Wall Pieces */}
+              {northPieces.map((piece, i) => {
+                const wallThick = piece.isShared ? intWallT : extWallT;
+                const wx = toScreenX(rx + piece.start);
+                const wy = toScreenY(ry - wallThick);
+                const ww = (piece.end - piece.start) * BASE_PPM;
+                const wh = wallThick * BASE_PPM;
 
-              {/* South Wall: render only if exterior */}
-              {!isSouthShared && (
-                southSegs.map((seg, i) => (
+                return (
+                  <g key={`nw-${rm.id}-${i}`}>
+                    <rect
+                      x={wx}
+                      y={wy}
+                      width={ww}
+                      height={wh}
+                      fill={colors.wallFill}
+                      stroke={colors.wallStroke}
+                      strokeWidth="1.5"
+                    />
+                    {!piece.isShared && (
+                      <rect
+                        x={wx}
+                        y={wy}
+                        width={ww}
+                        height={wh}
+                        fill={`url(#wall-hatch-${theme})`}
+                      />
+                    )}
+                  </g>
+                );
+              })}
+
+              {/* South Wall Pieces */}
+              {southPieces.map((piece, i) => {
+                const wallThick = piece.isShared ? intWallT : extWallT;
+                const wx = toScreenX(rx + piece.start);
+                const wy = toScreenY(ry + rh);
+                const ww = (piece.end - piece.start) * BASE_PPM;
+                const wh = wallThick * BASE_PPM;
+
+                return (
                   <g key={`sw-${rm.id}-${i}`}>
                     <rect
-                      x={toScreenX(rx + seg.start)}
-                      y={toScreenY(ry + rh)}
-                      width={(seg.end - seg.start) * BASE_PPM}
-                      height={extWallT * BASE_PPM}
+                      x={wx}
+                      y={wy}
+                      width={ww}
+                      height={wh}
                       fill={colors.wallFill}
                       stroke={colors.wallStroke}
                       strokeWidth="1.5"
                     />
-                    <rect
-                      x={toScreenX(rx + seg.start)}
-                      y={toScreenY(ry + rh)}
-                      width={(seg.end - seg.start) * BASE_PPM}
-                      height={extWallT * BASE_PPM}
-                      fill={`url(#wall-hatch-${theme})`}
-                    />
-                  </g>
-                ))
-              )}
-
-              {/* West Wall: render only if exterior OR if rm is the left-most room */}
-              {(!isWestShared || !sharedPartitions.vertical.some(p => Math.abs(p.x - rx) < 0.05 && p.room2Id === rm.id)) && (
-                westSegs.map((seg, i) => {
-                  const wallThick = isWestShared ? intWallT : extWallT;
-                  return (
-                    <g key={`ww-${rm.id}-${i}`}>
+                    {!piece.isShared && (
                       <rect
-                        x={toScreenX(rx - wallThick)}
-                        y={toScreenY(ry + seg.start)}
-                        width={wallThick * BASE_PPM}
-                        height={(seg.end - seg.start) * BASE_PPM}
-                        fill={colors.wallFill}
-                        stroke={colors.wallStroke}
-                        strokeWidth="1.5"
+                        x={wx}
+                        y={wy}
+                        width={ww}
+                        height={wh}
+                        fill={`url(#wall-hatch-${theme})`}
                       />
-                      {!isWestShared && (
-                        <rect
-                          x={toScreenX(rx - wallThick)}
-                          y={toScreenY(ry + seg.start)}
-                          width={wallThick * BASE_PPM}
-                          height={(seg.end - seg.start) * BASE_PPM}
-                          fill={`url(#wall-hatch-${theme})`}
-                        />
-                      )}
-                    </g>
-                  );
-                })
-              )}
+                    )}
+                  </g>
+                );
+              })}
 
-              {/* East Wall: render only if exterior */}
-              {!isEastShared && (
-                eastSegs.map((seg, i) => (
+              {/* West Wall Pieces */}
+              {westPieces.map((piece, i) => {
+                const wallThick = piece.isShared ? intWallT : extWallT;
+                const wx = toScreenX(rx - wallThick);
+                const wy = toScreenY(ry + piece.start);
+                const ww = wallThick * BASE_PPM;
+                const wh = (piece.end - piece.start) * BASE_PPM;
+
+                return (
+                  <g key={`ww-${rm.id}-${i}`}>
+                    <rect
+                      x={wx}
+                      y={wy}
+                      width={ww}
+                      height={wh}
+                      fill={colors.wallFill}
+                      stroke={colors.wallStroke}
+                      strokeWidth="1.5"
+                    />
+                    {!piece.isShared && (
+                      <rect
+                        x={wx}
+                        y={wy}
+                        width={ww}
+                        height={wh}
+                        fill={`url(#wall-hatch-${theme})`}
+                      />
+                    )}
+                  </g>
+                );
+              })}
+
+              {/* East Wall Pieces */}
+              {eastPieces.map((piece, i) => {
+                const wallThick = piece.isShared ? intWallT : extWallT;
+                const wx = toScreenX(rx + rw);
+                const wy = toScreenY(ry + piece.start);
+                const ww = wallThick * BASE_PPM;
+                const wh = (piece.end - piece.start) * BASE_PPM;
+
+                return (
                   <g key={`ew-${rm.id}-${i}`}>
                     <rect
-                      x={toScreenX(rx + rw)}
-                      y={toScreenY(ry + seg.start)}
-                      width={extWallT * BASE_PPM}
-                      height={(seg.end - seg.start) * BASE_PPM}
+                      x={wx}
+                      y={wy}
+                      width={ww}
+                      height={wh}
                       fill={colors.wallFill}
                       stroke={colors.wallStroke}
                       strokeWidth="1.5"
                     />
-                    <rect
-                      x={toScreenX(rx + rw)}
-                      y={toScreenY(ry + seg.start)}
-                      width={extWallT * BASE_PPM}
-                      height={(seg.end - seg.start) * BASE_PPM}
-                      fill={`url(#wall-hatch-${theme})`}
-                    />
+                    {!piece.isShared && (
+                      <rect
+                        x={wx}
+                        y={wy}
+                        width={ww}
+                        height={wh}
+                        fill={`url(#wall-hatch-${theme})`}
+                      />
+                    )}
                   </g>
-                ))
+                );
+              })}
+
+              {/* Exterior Corner Junctions (Miter Caps) */}
+              {hasNwCorner && (
+                <g key={`corner-nw-${rm.id}`}>
+                  <rect
+                    x={toScreenX(rx - extWallT)}
+                    y={toScreenY(ry - extWallT)}
+                    width={extWallT * BASE_PPM}
+                    height={extWallT * BASE_PPM}
+                    fill={colors.wallFill}
+                    stroke={colors.wallStroke}
+                    strokeWidth="1.5"
+                  />
+                  <rect
+                    x={toScreenX(rx - extWallT)}
+                    y={toScreenY(ry - extWallT)}
+                    width={extWallT * BASE_PPM}
+                    height={extWallT * BASE_PPM}
+                    fill={`url(#wall-hatch-${theme})`}
+                  />
+                </g>
+              )}
+
+              {hasNeCorner && (
+                <g key={`corner-ne-${rm.id}`}>
+                  <rect
+                    x={toScreenX(rx + rw)}
+                    y={toScreenY(ry - extWallT)}
+                    width={extWallT * BASE_PPM}
+                    height={extWallT * BASE_PPM}
+                    fill={colors.wallFill}
+                    stroke={colors.wallStroke}
+                    strokeWidth="1.5"
+                  />
+                  <rect
+                    x={toScreenX(rx + rw)}
+                    y={toScreenY(ry - extWallT)}
+                    width={extWallT * BASE_PPM}
+                    height={extWallT * BASE_PPM}
+                    fill={`url(#wall-hatch-${theme})`}
+                  />
+                </g>
+              )}
+
+              {hasSwCorner && (
+                <g key={`corner-sw-${rm.id}`}>
+                  <rect
+                    x={toScreenX(rx - extWallT)}
+                    y={toScreenY(ry + rh)}
+                    width={extWallT * BASE_PPM}
+                    height={extWallT * BASE_PPM}
+                    fill={colors.wallFill}
+                    stroke={colors.wallStroke}
+                    strokeWidth="1.5"
+                  />
+                  <rect
+                    x={toScreenX(rx - extWallT)}
+                    y={toScreenY(ry + rh)}
+                    width={extWallT * BASE_PPM}
+                    height={extWallT * BASE_PPM}
+                    fill={`url(#wall-hatch-${theme})`}
+                  />
+                </g>
+              )}
+
+              {hasSeCorner && (
+                <g key={`corner-se-${rm.id}`}>
+                  <rect
+                    x={toScreenX(rx + rw)}
+                    y={toScreenY(ry + rh)}
+                    width={extWallT * BASE_PPM}
+                    height={extWallT * BASE_PPM}
+                    fill={colors.wallFill}
+                    stroke={colors.wallStroke}
+                    strokeWidth="1.5"
+                  />
+                  <rect
+                    x={toScreenX(rx + rw)}
+                    y={toScreenY(ry + rh)}
+                    width={extWallT * BASE_PPM}
+                    height={extWallT * BASE_PPM}
+                    fill={`url(#wall-hatch-${theme})`}
+                  />
+                </g>
               )}
             </g>
           );
@@ -1039,8 +1340,8 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
             const w = op.width;
             const label = isDoor ? `D${idx + 1}` : `W${idx + 1}`;
 
-            // Check if this wall is interior shared partition or exterior wall
-            const isShared = isWallShared(rx, ry, rw, rh, op.wall);
+            // Check if this specific opening location is on an interior shared partition or exterior wall
+            const isShared = isPositionShared(rm, op.wall, op.position + op.width / 2, allRooms);
             const wallThick = isShared ? intWallT : extWallT;
 
             let cutX = 0;
