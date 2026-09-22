@@ -139,3 +139,11 @@ export const AlertTriangle: React.FC<IconProps> = ({ size = 20, className = '', 
     <line x1="12" y1="17" x2="12.01" y2="17" />
   </svg>
 );
+
+export const Compass: React.FC<IconProps> = ({ size = 20, className = '', ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+    <circle cx="12" cy="12" r="10" />
+    <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+  </svg>
+);
+

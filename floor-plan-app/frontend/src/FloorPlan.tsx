@@ -61,6 +61,32 @@ interface FloorPlanProps {
   panOffset?: { x: number; y: number };
   onPanChange?: (pan: { x: number; y: number }) => void;
   onCursorMove?: (coords: { x: number; y: number } | null) => void;
+  orientation?: number; // 0 to 360 degrees (0 = North Up)
+  onOrientationChange?: (angle: number) => void;
+}
+
+export function getCompassDirection(deg: number): string {
+  const d = ((deg % 360) + 360) % 360;
+  if (d >= 337.5 || d < 22.5) return 'N';
+  if (d >= 22.5 && d < 67.5) return 'NE';
+  if (d >= 67.5 && d < 112.5) return 'E';
+  if (d >= 112.5 && d < 157.5) return 'SE';
+  if (d >= 157.5 && d < 202.5) return 'S';
+  if (d >= 202.5 && d < 247.5) return 'SW';
+  if (d >= 247.5 && d < 292.5) return 'W';
+  return 'NW';
+}
+
+export function getCompassFullName(deg: number): string {
+  const d = ((deg % 360) + 360) % 360;
+  if (d >= 337.5 || d < 22.5) return 'North';
+  if (d >= 22.5 && d < 67.5) return 'North-East';
+  if (d >= 67.5 && d < 112.5) return 'East';
+  if (d >= 112.5 && d < 157.5) return 'South-East';
+  if (d >= 157.5 && d < 202.5) return 'South';
+  if (d >= 202.5 && d < 247.5) return 'South-West';
+  if (d >= 247.5 && d < 292.5) return 'West';
+  return 'North-West';
 }
 
 export function formatDistance(meters: number, unit: UnitSystem = 'metric'): string {
@@ -543,12 +569,32 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
   panOffset = { x: 0, y: 0 },
   onPanChange,
   onCursorMove,
+  orientation,
+  onOrientationChange,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
+  const compassRef = useRef<SVGGElement>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [draggingOpeningInfo, setDraggingOpeningInfo] = useState<{ roomId: string; openingId: string } | null>(null);
   const [dragOffset, setDragOffset] = useState<number>(0);
+
+  // Compass Dragging State & Orientation State
+  const [internalOrientation, setInternalOrientation] = useState<number>(0);
+  const currentOrientation = orientation !== undefined ? orientation : internalOrientation;
+  const [isDraggingCompass, setIsDraggingCompass] = useState<boolean>(false);
+  const [isHoveringCompass, setIsHoveringCompass] = useState<boolean>(false);
+
+  const handleOrientationChange = useCallback(
+    (deg: number) => {
+      const normalized = ((deg % 360) + 360) % 360;
+      setInternalOrientation(normalized);
+      if (onOrientationChange) {
+        onOrientationChange(normalized);
+      }
+    },
+    [onOrientationChange]
+  );
 
   // Dragging Room State (Reposition rooms)
   const [draggingRoomInfo, setDraggingRoomInfo] = useState<{
@@ -577,6 +623,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
   useEffect(() => {
     const handleGlobalPointerUp = () => {
       setIsPanning(false);
+      setIsDraggingCompass(false);
       setDraggingOpeningInfo(null);
       setDraggingRoomInfo(null);
       setResizingRoomInfo(null);
@@ -672,6 +719,11 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
   const viewHeight = baseHeight / currentZoom;
   const centerX = baseWidth / 2;
   const centerY = baseHeight / 2;
+  const planCenterX = baseWidth / 2;
+  const planCenterY = baseHeight / 2;
+  const compassCenterX = baseWidth - 75;
+  const compassCenterY = 75;
+
   const viewBoxX = centerX - viewWidth / 2 - (panOffset?.x || 0);
   const viewBoxY = centerY - viewHeight / 2 - (panOffset?.y || 0);
   const viewBox = `${viewBoxX} ${viewBoxY} ${viewWidth} ${viewHeight}`;
@@ -680,7 +732,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
   const toScreenX = useCallback((xm: number) => originX + xm * BASE_PPM, [originX]);
   const toScreenY = useCallback((ym: number) => originY + ym * BASE_PPM, [originY]);
 
-  // Convert browser client coordinates back to mathematically exact room metric coordinates
+  // Convert browser client coordinates back to mathematically exact room metric coordinates (accounting for orientation rotation)
   const toRoomCoords = useCallback((clientX: number, clientY: number) => {
     if (!svgRef.current) return { x: 0, y: 0 };
     const svg = svgRef.current;
@@ -690,14 +742,58 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
     const ctm = svg.getScreenCTM();
     if (!ctm) return { x: 0, y: 0 };
     const svgPt = pt.matrixTransform(ctm.inverse());
-    const xm = (svgPt.x - originX) / BASE_PPM;
-    const ym = (svgPt.y - originY) / BASE_PPM;
+
+    let sx = svgPt.x;
+    let sy = svgPt.y;
+    if (currentOrientation !== 0) {
+      const rad = (-currentOrientation * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const dx = sx - planCenterX;
+      const dy = sy - planCenterY;
+      sx = planCenterX + dx * cos - dy * sin;
+      sy = planCenterY + dx * sin + dy * cos;
+    }
+
+    const xm = (sx - originX) / BASE_PPM;
+    const ym = (sy - originY) / BASE_PPM;
     return { x: xm, y: ym };
-  }, [originX, originY]);
+  }, [originX, originY, planCenterX, planCenterY, currentOrientation]);
 
-
-  // Pointer move handler (drag rooms, drag openings, resize handles, pan, cursor tracking)
+  // Pointer move handler (drag rooms, drag openings, resize handles, pan, compass rotate, cursor tracking)
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    // 1. Handle interactive compass rotation
+    if (isDraggingCompass) {
+      const svg = svgRef.current;
+      if (svg) {
+        const ctm = svg.getScreenCTM();
+        if (ctm) {
+          const pt = svg.createSVGPoint();
+          pt.x = compassCenterX;
+          pt.y = compassCenterY;
+          const screenCenter = pt.matrixTransform(ctm);
+          const dx = e.clientX - screenCenter.x;
+          const dy = e.clientY - screenCenter.y;
+          let rad = Math.atan2(dx, -dy);
+          if (rad < 0) rad += 2 * Math.PI;
+          let deg = (rad * 180) / Math.PI;
+
+          // Magnetic snap within 4 degrees of cardinal/ordinal directions
+          const snapAngles = [0, 45, 90, 135, 180, 225, 270, 315, 360];
+          for (const target of snapAngles) {
+            if (Math.abs(deg - target) < 4) {
+              deg = target === 360 ? 0 : target;
+              break;
+            }
+          }
+          deg = Math.round(deg * 10) / 10;
+          if (deg >= 360) deg = 0;
+          handleOrientationChange(deg);
+        }
+      }
+      return;
+    }
+
     const coords = toRoomCoords(e.clientX, e.clientY);
     if (onCursorMove) {
       onCursorMove({
@@ -731,8 +827,16 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
         const deltaX = (e.clientX - draggingRoomInfo.startClient.x) / (scale * BASE_PPM);
         const deltaY = (e.clientY - draggingRoomInfo.startClient.y) / (scale * BASE_PPM);
 
-        const rawX = draggingRoomInfo.startPos.x + deltaX;
-        const rawY = draggingRoomInfo.startPos.y + deltaY;
+        let unrotDeltaX = deltaX;
+        let unrotDeltaY = deltaY;
+        if (currentOrientation !== 0) {
+          const rad = (-currentOrientation * Math.PI) / 180;
+          unrotDeltaX = deltaX * Math.cos(rad) - deltaY * Math.sin(rad);
+          unrotDeltaY = deltaX * Math.sin(rad) + deltaY * Math.cos(rad);
+        }
+
+        const rawX = draggingRoomInfo.startPos.x + unrotDeltaX;
+        const rawY = draggingRoomInfo.startPos.y + unrotDeltaY;
 
         const otherRooms = allRooms.filter((r) => r.id !== draggingRoomInfo.roomId);
         const snapped = computeSnappedRoomPosition(rawX, rawY, parentRoom, otherRooms, unit);
@@ -760,15 +864,23 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
         const deltaX = (e.clientX - resizingRoomInfo.startClient.x) / (scale * BASE_PPM);
         const deltaY = (e.clientY - resizingRoomInfo.startClient.y) / (scale * BASE_PPM);
 
+        let unrotDeltaX = deltaX;
+        let unrotDeltaY = deltaY;
+        if (currentOrientation !== 0) {
+          const rad = (-currentOrientation * Math.PI) / 180;
+          unrotDeltaX = deltaX * Math.cos(rad) - deltaY * Math.sin(rad);
+          unrotDeltaY = deltaX * Math.sin(rad) + deltaY * Math.cos(rad);
+        }
+
         let newBreadth = parentRoom.breadth;
         let newLength = parentRoom.length;
 
         if (resizingRoomInfo.handle === 'right' || resizingRoomInfo.handle === 'corner') {
-          const rawB = resizingRoomInfo.startDim.breadth + deltaX;
+          const rawB = resizingRoomInfo.startDim.breadth + unrotDeltaX;
           newBreadth = Math.max(1.5, Math.round(rawB * 10) / 10);
         }
         if (resizingRoomInfo.handle === 'bottom' || resizingRoomInfo.handle === 'corner') {
-          const rawL = resizingRoomInfo.startDim.length + deltaY;
+          const rawL = resizingRoomInfo.startDim.length + unrotDeltaY;
           newLength = Math.max(1.5, Math.round(rawL * 10) / 10);
         }
 
@@ -824,13 +936,14 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
   };
 
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (e.button === 0 && !draggingOpeningInfo && !draggingRoomInfo && !resizingRoomInfo) {
+    if (e.button === 0 && !draggingOpeningInfo && !draggingRoomInfo && !resizingRoomInfo && !isDraggingCompass) {
       const target = e.target as SVGElement;
       if (
         target.dataset.drag !== 'opening' &&
         target.dataset.interactive !== 'room' &&
         target.dataset.drag !== 'room' &&
-        target.dataset.drag !== 'resize'
+        target.dataset.drag !== 'resize' &&
+        target.dataset.drag !== 'compass'
       ) {
         setIsPanning(true);
         setPanStart({ x: e.clientX, y: e.clientY });
@@ -1036,6 +1149,11 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
         )}
 
         {/* 3. Rooms Interior Floors (Draggable to Reposition, Clickable to Select) */}
+        <g
+          id="floor-plan-rotated-group"
+          transform={`rotate(${currentOrientation}, ${planCenterX}, ${planCenterY})`}
+          style={{ transition: isDraggingCompass ? 'none' : 'transform 0.15s cubic-bezier(0.16, 1, 0.3, 1)' }}
+        >
         {allRooms.map((rm) => {
           const rx = rm.x || 0;
           const ry = rm.y || 0;
@@ -1753,69 +1871,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
           </g>
         )}
 
-        {/* 9. Architectural North Compass Rose (Top Right of sheet) */}
-        <g transform={`translate(${baseWidth - 65}, 65)`} className="pointer-events-none">
-          <circle cx="0" cy="0" r="26" fill={colors.bg} stroke={colors.dimensionLine} strokeWidth="1.5" opacity="0.9" />
-          <polygon points="0,-22 6,0 0,-5 -6,0" fill="#ef4444" />
-          <polygon points="0,22 6,0 0,5 -6,0" fill={colors.dimensionLine} opacity="0.5" />
-          <text x="0" y="-9" textAnchor="middle" fill="#ef4444" fontSize="12" fontWeight="bold">N</text>
-        </g>
 
-        {/* 10. Architectural Dynamic Scale Bar (Bottom Left of sheet) */}
-        {unit === 'metric' ? (
-          <g transform={`translate(45, ${baseHeight - 50})`} className="pointer-events-none">
-            <rect x="-12" y="-22" width="224" height="48" fill={colors.bg} stroke={colors.gridMinor} strokeWidth="1" rx="6" opacity="0.95" />
-            <rect x="0" y="0" width="50" height="7" fill={colors.dimensionLine} stroke={colors.dimensionLine} strokeWidth="1" />
-            <rect x="50" y="0" width="50" height="7" fill={colors.bg} stroke={colors.dimensionLine} strokeWidth="1" />
-            <rect x="100" y="0" width="100" height="7" fill={colors.dimensionLine} stroke={colors.dimensionLine} strokeWidth="1" />
-
-            {[10, 20, 30, 40, 60, 70, 80, 90].map((tx) => (
-              <line key={tx} x1={tx} y1="-3" x2={tx} y2="0" stroke={colors.dimensionLine} strokeWidth="0.8" />
-            ))}
-
-            <line x1="0" y1="-6" x2="0" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
-            <line x1="50" y1="-5" x2="50" y2="7" stroke={colors.dimensionLine} strokeWidth="1.2" />
-            <line x1="100" y1="-6" x2="100" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
-            <line x1="200" y1="-6" x2="200" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
-
-            <text x="0" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">0</text>
-            <text x="50" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">0.5m</text>
-            <text x="100" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">1.0m</text>
-            <text x="200" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">2.0m</text>
-
-            <text x="100" y="-10" textAnchor="middle" fill={colors.innerLine} fontSize="11" fontWeight="bold" letterSpacing="0.05em">
-              SCALE 1:50 · 1m = 100 UNITS
-            </text>
-          </g>
-        ) : (
-          <g transform={`translate(45, ${baseHeight - 50})`} className="pointer-events-none">
-            <rect x="-12" y="-22" width="208" height="48" fill={colors.bg} stroke={colors.gridMinor} strokeWidth="1" rx="6" opacity="0.95" />
-            <rect x="0" y="0" width="30.48" height="7" fill={colors.dimensionLine} stroke={colors.dimensionLine} strokeWidth="1" />
-            <rect x="30.48" y="0" width="30.48" height="7" fill={colors.bg} stroke={colors.dimensionLine} strokeWidth="1" />
-            <rect x="60.96" y="0" width="60.96" height="7" fill={colors.dimensionLine} stroke={colors.dimensionLine} strokeWidth="1" />
-            <rect x="121.92" y="0" width="60.96" height="7" fill={colors.bg} stroke={colors.dimensionLine} strokeWidth="1" />
-
-            {[7.62, 15.24, 22.86, 38.1, 45.72, 53.34].map((tx) => (
-              <line key={tx} x1={tx} y1="-3" x2={tx} y2="0" stroke={colors.dimensionLine} strokeWidth="0.8" />
-            ))}
-
-            <line x1="0" y1="-6" x2="0" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
-            <line x1="30.48" y1="-5" x2="30.48" y2="7" stroke={colors.dimensionLine} strokeWidth="1.2" />
-            <line x1="60.96" y1="-6" x2="60.96" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
-            <line x1="121.92" y1="-6" x2="121.92" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
-            <line x1="182.88" y1="-6" x2="182.88" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
-
-            <text x="0" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">0</text>
-            <text x="30.48" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">1'</text>
-            <text x="60.96" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">2'</text>
-            <text x="121.92" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">4'</text>
-            <text x="182.88" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">6'</text>
-
-            <text x="91.44" y="-10" textAnchor="middle" fill={colors.innerLine} fontSize="11" fontWeight="bold" letterSpacing="0.05em">
-              SCALE 1/4" = 1'-0" · 1' = 30.5 UNITS
-            </text>
-          </g>
-        )}
 
         {/* 11. Magnetic Alignment Guide Lines */}
         {alignmentGuides.x !== null && (
@@ -2049,6 +2105,228 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
                 </g>
               );
             })()}
+          </g>
+        )}
+        </g>
+
+        {/* 9. Interactive Architectural North Compass Rose (Top Right of sheet) */}
+        <g
+          ref={compassRef}
+          data-drag="compass"
+          transform={`translate(${compassCenterX}, ${compassCenterY})`}
+          className="cursor-grab active:cursor-grabbing select-none"
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            setIsDraggingCompass(true);
+            (e.target as Element).setPointerCapture?.(e.pointerId);
+          }}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            handleOrientationChange(0);
+          }}
+          onMouseEnter={() => setIsHoveringCompass(true)}
+          onMouseLeave={() => setIsHoveringCompass(false)}
+        >
+          {/* Larger invisible hit circle for easy grabbing */}
+          <circle cx="0" cy="0" r="48" fill="transparent" />
+
+          {/* Outer Dial Circle with Drop Shadow */}
+          <circle
+            cx="0"
+            cy="0"
+            r="36"
+            fill={colors.bg}
+            stroke={isDraggingCompass || isHoveringCompass ? '#2563eb' : colors.dimensionLine}
+            strokeWidth={isDraggingCompass || isHoveringCompass ? 2.5 : 1.8}
+            style={{
+              filter: isDraggingCompass || isHoveringCompass
+                ? 'drop-shadow(0 6px 16px rgba(37, 99, 235, 0.35))'
+                : 'drop-shadow(0 2px 8px rgba(0, 0, 0, 0.15))',
+              transition: 'stroke 0.2s, stroke-width 0.2s',
+            }}
+          />
+
+          {/* Dial Degree Graduation Ticks */}
+          {Array.from({ length: 24 }).map((_, i) => {
+            const deg = i * 15;
+            const isMajor = deg % 45 === 0;
+            const isMedium = deg % 30 === 0 && !isMajor;
+            const r1 = 36;
+            const r2 = isMajor ? 27 : isMedium ? 30 : 32.5;
+            const rad = (deg * Math.PI) / 180;
+            const x1 = Math.sin(rad) * r1;
+            const y1 = -Math.cos(rad) * r1;
+            const x2 = Math.sin(rad) * r2;
+            const y2 = -Math.cos(rad) * r2;
+            return (
+              <line
+                key={`comp-tick-${deg}`}
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
+                stroke={isMajor ? colors.dimensionLine : colors.gridMedium}
+                strokeWidth={isMajor ? 1.5 : 0.8}
+                opacity={isMajor ? 0.9 : 0.6}
+              />
+            );
+          })}
+
+          {/* Fixed Outer Cardinal Labels */}
+          <text x="0" y="-42" textAnchor="middle" fill="#ef4444" fontSize="11" fontFamily="system-ui, sans-serif" fontWeight="bold">
+            N
+          </text>
+          <text x="44" y="4" textAnchor="start" fill="#64748b" fontSize="10" fontFamily="system-ui, sans-serif" fontWeight="bold">
+            E
+          </text>
+          <text x="0" y="50" textAnchor="middle" fill="#64748b" fontSize="10" fontFamily="system-ui, sans-serif" fontWeight="bold">
+            S
+          </text>
+          <text x="-44" y="4" textAnchor="end" fill="#64748b" fontSize="10" fontFamily="system-ui, sans-serif" fontWeight="bold">
+            W
+          </text>
+
+          {/* Rotating Compass Star Needle */}
+          <g
+            transform={`rotate(${currentOrientation})`}
+            style={{ transition: isDraggingCompass ? 'none' : 'transform 0.15s cubic-bezier(0.16, 1, 0.3, 1)' }}
+          >
+            {/* North Point (3D Faceted Crimson & Bright Red) */}
+            <polygon points="0,-33 -7,0 0,-7" fill="#ef4444" />
+            <polygon points="0,-33 7,0 0,-7" fill="#f87171" />
+            <circle cx="0" cy="-33" r="3.5" fill="#ef4444" stroke="#ffffff" strokeWidth="1.2" />
+
+            {/* South Point (Dark Slate & Light Slate) */}
+            <polygon points="0,29 -6,0 0,6" fill="#475569" />
+            <polygon points="0,29 6,0 0,6" fill="#94a3b8" />
+
+            {/* East & West Points */}
+            <polygon points="25,0 0,-5 5,0" fill="#64748b" />
+            <polygon points="25,0 0,5 5,0" fill="#94a3b8" />
+            <polygon points="-25,0 0,-5 -5,0" fill="#64748b" />
+            <polygon points="-25,0 0,5 -5,0" fill="#94a3b8" />
+
+            {/* Center Brass Jewel */}
+            <circle cx="0" cy="0" r="5" fill="#0f172a" stroke="#ffffff" strokeWidth="1.5" />
+            <circle cx="0" cy="0" r="2" fill="#ef4444" />
+
+            {/* Cardinal Indicator Letters rotating with needle */}
+            <text x="0" y="-17" textAnchor="middle" fill="#ffffff" fontSize="10.5" fontFamily="system-ui, sans-serif" fontWeight="900">
+              N
+            </text>
+            <text x="0" y="21" textAnchor="middle" fill="#ffffff" fontSize="9" fontFamily="system-ui, sans-serif" fontWeight="bold">
+              S
+            </text>
+          </g>
+
+          {/* Floating Heading Readout Badge below Compass */}
+          <g transform="translate(0, 68)">
+            <rect
+              x="-46"
+              y="-12"
+              width="92"
+              height="24"
+              rx="12"
+              fill={isDraggingCompass ? '#1d4ed8' : '#0f172a'}
+              stroke="#38bdf8"
+              strokeWidth="1.2"
+              style={{ filter: 'drop-shadow(0 3px 6px rgba(0,0,0,0.25))' }}
+            />
+            <text
+              x="0"
+              y="4"
+              textAnchor="middle"
+              fill="#ffffff"
+              fontSize="11"
+              fontFamily="system-ui, monospace"
+              fontWeight="bold"
+            >
+              {Math.round(currentOrientation)}° · {getCompassDirection(currentOrientation)}
+            </text>
+          </g>
+
+          {/* Quick Reset or Hover Tooltip */}
+          {isHoveringCompass && !isDraggingCompass && (
+            <g transform="translate(0, 102)" className="pointer-events-none">
+              <rect
+                x="-115"
+                y="-11"
+                width="230"
+                height="22"
+                rx="6"
+                fill="#1e293b"
+                stroke="#475569"
+                strokeWidth="1"
+                opacity="0.95"
+              />
+              <text
+                x="0"
+                y="4"
+                textAnchor="middle"
+                fill="#94a3b8"
+                fontSize="10"
+                fontFamily="system-ui, sans-serif"
+                fontWeight="600"
+              >
+                Drag to Rotate (0°–360°) • Double-Click to Reset
+              </text>
+            </g>
+          )}
+        </g>
+
+        {/* 10. Architectural Dynamic Scale Bar (Bottom Left of sheet) */}
+        {unit === 'metric' ? (
+          <g transform={`translate(45, ${baseHeight - 50})`} className="pointer-events-none">
+            <rect x="-12" y="-22" width="224" height="48" fill={colors.bg} stroke={colors.gridMinor} strokeWidth="1" rx="6" opacity="0.95" />
+            <rect x="0" y="0" width="50" height="7" fill={colors.dimensionLine} stroke={colors.dimensionLine} strokeWidth="1" />
+            <rect x="50" y="0" width="50" height="7" fill={colors.bg} stroke={colors.dimensionLine} strokeWidth="1" />
+            <rect x="100" y="0" width="100" height="7" fill={colors.dimensionLine} stroke={colors.dimensionLine} strokeWidth="1" />
+
+            {[10, 20, 30, 40, 60, 70, 80, 90].map((tx) => (
+              <line key={tx} x1={tx} y1="-3" x2={tx} y2="0" stroke={colors.dimensionLine} strokeWidth="0.8" />
+            ))}
+
+            <line x1="0" y1="-6" x2="0" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
+            <line x1="50" y1="-5" x2="50" y2="7" stroke={colors.dimensionLine} strokeWidth="1.2" />
+            <line x1="100" y1="-6" x2="100" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
+            <line x1="200" y1="-6" x2="200" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
+
+            <text x="0" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">0</text>
+            <text x="50" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">0.5m</text>
+            <text x="100" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">1.0m</text>
+            <text x="200" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">2.0m</text>
+
+            <text x="100" y="-10" textAnchor="middle" fill={colors.innerLine} fontSize="11" fontWeight="bold" letterSpacing="0.05em">
+              SCALE 1:50 · 1m = 100 UNITS
+            </text>
+          </g>
+        ) : (
+          <g transform={`translate(45, ${baseHeight - 50})`} className="pointer-events-none">
+            <rect x="-12" y="-22" width="208" height="48" fill={colors.bg} stroke={colors.gridMinor} strokeWidth="1" rx="6" opacity="0.95" />
+            <rect x="0" y="0" width="30.48" height="7" fill={colors.dimensionLine} stroke={colors.dimensionLine} strokeWidth="1" />
+            <rect x="30.48" y="0" width="30.48" height="7" fill={colors.bg} stroke={colors.dimensionLine} strokeWidth="1" />
+            <rect x="60.96" y="0" width="60.96" height="7" fill={colors.dimensionLine} stroke={colors.dimensionLine} strokeWidth="1" />
+            <rect x="121.92" y="0" width="60.96" height="7" fill={colors.bg} stroke={colors.dimensionLine} strokeWidth="1" />
+
+            {[7.62, 15.24, 22.86, 38.1, 45.72, 53.34].map((tx) => (
+              <line key={tx} x1={tx} y1="-3" x2={tx} y2="0" stroke={colors.dimensionLine} strokeWidth="0.8" />
+            ))}
+
+            <line x1="0" y1="-6" x2="0" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
+            <line x1="30.48" y1="-5" x2="30.48" y2="7" stroke={colors.dimensionLine} strokeWidth="1.2" />
+            <line x1="60.96" y1="-6" x2="60.96" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
+            <line x1="121.92" y1="-6" x2="121.92" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
+            <line x1="182.88" y1="-6" x2="182.88" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
+
+            <text x="0" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">0</text>
+            <text x="30.48" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">1'</text>
+            <text x="60.96" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">2'</text>
+            <text x="121.92" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">4'</text>
+            <text x="182.88" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">6'</text>
+
+            <text x="91.44" y="-10" textAnchor="middle" fill={colors.innerLine} fontSize="11" fontWeight="bold" letterSpacing="0.05em">
+              SCALE 1/4" = 1'-0" · 1' = 30.5 UNITS
+            </text>
           </g>
         )}
       </svg>

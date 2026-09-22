@@ -6,6 +6,8 @@ import FloorPlan, {
   FloorPlanTheme,
   UnitSystem,
   formatDistance,
+  getCompassDirection,
+  getCompassFullName,
   BASE_PPM,
   SHEET_MARGIN_PX,
 } from './FloorPlan';
@@ -23,6 +25,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Ruler,
+  Compass,
 } from './icons';
 
 // ============================================================================
@@ -410,8 +413,11 @@ function App() {
   const [newPos, setNewPos] = useState<number>(1.0);
   const [newWidth, setNewWidth] = useState<number>(0.9);
 
+  // Orientation & Site Facing (0° to 360°, 0 = North Up)
+  const [orientation, setOrientation] = useState<number>(0);
+
   // Active Sidebar Tab
-  const [activeTab, setActiveTab] = useState<'rooms' | 'dimensions' | 'walls' | 'openings' | 'analytics'>('rooms');
+  const [activeTab, setActiveTab] = useState<'rooms' | 'dimensions' | 'walls' | 'openings' | 'orientation' | 'analytics'>('rooms');
 
   // Export Loading States
   const [isExportingPng, setIsExportingPng] = useState(false);
@@ -563,6 +569,7 @@ function App() {
       setInteriorWallThickness(preset.interiorWallThickness || 0.10);
       setSelectedRoomId(preset.rooms[0]?.id || null);
       setSelectedOpeningId(null);
+      setOrientation(0);
       setZoom(1);
       setPanOffset({ x: 0, y: 0 });
     }
@@ -976,6 +983,30 @@ function App() {
             </button>
           </div>
 
+          {/* Compass Orientation Quick Pill */}
+          <button
+            type="button"
+            onClick={() => {
+              if (Math.round(orientation) !== 0) {
+                setOrientation(0);
+              } else {
+                setActiveTab('orientation');
+              }
+            }}
+            title={`Plan Facing: ${Math.round(orientation)}° (${getCompassFullName(orientation)}). Click to reset North or adjust.`}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold transition ${
+              Math.round(orientation) === 0
+                ? 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                : 'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100 shadow-xs'
+            }`}
+          >
+            <Compass size={14} className={Math.round(orientation) !== 0 ? 'text-blue-600' : 'text-slate-500'} />
+            <span>{Math.round(orientation)}° {getCompassDirection(orientation)}</span>
+            {Math.round(orientation) !== 0 && (
+              <span className="text-[10px] text-blue-500 font-normal hover:underline ml-0.5">Reset</span>
+            )}
+          </button>
+
           {/* Theme Selector */}
           <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs font-semibold">
             <button
@@ -1057,6 +1088,16 @@ function App() {
               }`}
             >
               Wall Thickness
+            </button>
+
+            <button
+              onClick={() => setActiveTab('orientation')}
+              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition whitespace-nowrap px-2 flex items-center justify-center gap-1 ${
+                activeTab === 'orientation' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <Compass size={13} />
+              Facing
             </button>
 
             <button
@@ -1815,6 +1856,173 @@ function App() {
             )}
 
             {/* ========================================================= */}
+            {/* TAB: ORIENTATION & SITE FACING (0° TO 360°)               */}
+            {/* ========================================================= */}
+            {activeTab === 'orientation' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                    <Compass size={16} className="text-blue-600" />
+                    Plan Orientation & Site Facing
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Rotate the floor plan to match your site's True North or desired solar/entrance orientation (0° to 360°).
+                  </p>
+                </div>
+
+                {/* Big Visual Compass Orientation Card */}
+                <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-lg space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Current Heading</span>
+                    <span className="text-xs font-mono font-bold text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800">
+                      {getCompassFullName(orientation)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-3xl font-black tracking-tight text-white font-mono">
+                        {Math.round(orientation)}°
+                      </div>
+                      <div className="text-xs font-semibold text-slate-300 mt-0.5">
+                        Facing {getCompassDirection(orientation)} · {getCompassFullName(orientation)}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setOrientation(0)}
+                      title="Reset orientation to True North (0°)"
+                      className="px-3 py-1.5 rounded-xl bg-slate-700/80 hover:bg-slate-600 text-slate-200 hover:text-white text-xs font-bold transition flex items-center gap-1.5 border border-slate-600 shadow-xs cursor-pointer"
+                    >
+                      <RotateCcw size={13} />
+                      Reset North
+                    </button>
+                  </div>
+
+                  {/* Degree Slider */}
+                  <div className="space-y-1.5 pt-2">
+                    <div className="flex justify-between text-[11px] font-mono text-slate-400">
+                      <span>0° N</span>
+                      <span>90° E</span>
+                      <span>180° S</span>
+                      <span>270° W</span>
+                      <span>360° N</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="360"
+                      step="1"
+                      value={Math.round(orientation)}
+                      onChange={(e) => setOrientation(Number(e.target.value))}
+                      className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Exact Typeable Angle Input */}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Exact Angle (Degrees)
+                    </label>
+                    <span className="text-xs text-slate-500">0° to 360°</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="number"
+                        min="0"
+                        max="360"
+                        step="1"
+                        value={Math.round(orientation)}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val)) {
+                            const normalized = ((val % 360) + 360) % 360;
+                            setOrientation(normalized);
+                          }
+                        }}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-bold font-mono text-slate-800 focus:outline-none focus:border-blue-600"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">°</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setOrientation((prev) => (prev + 90) % 360)}
+                      title="Rotate 90° Clockwise"
+                      className="px-3 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-bold border border-slate-300 text-xs transition cursor-pointer"
+                    >
+                      +90°
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOrientation((prev) => (prev - 90 + 360) % 360)}
+                      title="Rotate 90° Counter-Clockwise"
+                      className="px-3 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-bold border border-slate-300 text-xs transition cursor-pointer"
+                    >
+                      -90°
+                    </button>
+                  </div>
+                </div>
+
+                {/* 8 Quick Cardinal & Ordinal Directions */}
+                <div className="space-y-2.5">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                    Quick Direction Presets
+                  </label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[
+                      { label: 'North', short: 'N', deg: 0 },
+                      { label: 'North-East', short: 'NE', deg: 45 },
+                      { label: 'East', short: 'E', deg: 90 },
+                      { label: 'South-East', short: 'SE', deg: 135 },
+                      { label: 'South', short: 'S', deg: 180 },
+                      { label: 'South-West', short: 'SW', deg: 225 },
+                      { label: 'West', short: 'W', deg: 270 },
+                      { label: 'North-West', short: 'NW', deg: 315 },
+                    ].map((item) => {
+                      const isSelected = Math.round(orientation) === item.deg;
+                      return (
+                        <button
+                          key={item.short}
+                          type="button"
+                          onClick={() => setOrientation(item.deg)}
+                          className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                            isSelected
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-sm font-bold'
+                              : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200 font-medium'
+                          }`}
+                        >
+                          <span className="text-sm font-extrabold">{item.short}</span>
+                          <span className={`text-[10px] ${isSelected ? 'text-blue-100' : 'text-slate-400'}`}>
+                            {item.deg}°
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Architectural Canvas Hint Card */}
+                <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-1.5 leading-relaxed">
+                  <div className="font-bold flex items-center gap-1.5 text-amber-800">
+                    <Compass size={14} />
+                    Direct Canvas Compass Interaction
+                  </div>
+                  <p>
+                    • <strong>Rotate on Canvas:</strong> You can click and drag directly around the Compass Rose in the top-right of the drawing sheet to rotate to any heading freely.
+                  </p>
+                  <p>
+                    • <strong>Double-Click Reset:</strong> Double-click the canvas compass at any time to instantly snap it back to North (0°).
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================= */}
             {/* TAB: ANALYTICS & ROOM SCHEDULE                            */}
             {/* ========================================================= */}
             {activeTab === 'analytics' && (
@@ -1951,12 +2159,14 @@ function App() {
             panOffset={panOffset}
             onPanChange={setPanOffset}
             onCursorMove={setCursorCoords}
+            orientation={orientation}
+            onOrientationChange={setOrientation}
           />
 
           {/* Top-Center Drag & Reposition Instruction Banner */}
           <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-md border border-slate-200 shadow-lg rounded-full px-4 py-1.5 flex items-center gap-2.5 z-10 text-xs font-semibold text-slate-700 pointer-events-none">
             <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
-            <span>Drag rooms or doors/windows to reposition • Drag blue edge handles to resize • Drag canvas to pan</span>
+            <span>Drag rooms to move • Drag compass to rotate (0°–360°) • Double-click compass to reset North</span>
           </div>
 
           {/* Top-Right Floating Canvas HUD */}
@@ -1987,6 +2197,18 @@ function App() {
               title="Reset View (100%)"
             >
               <RotateCcw size={18} />
+            </button>
+
+            <div className="w-px h-5 bg-slate-200 mx-1" />
+
+            <button
+              type="button"
+              onClick={() => setOrientation(0)}
+              className="px-2.5 py-1.5 rounded-xl hover:bg-slate-100 text-slate-700 hover:text-slate-900 transition flex items-center gap-1.5 text-xs font-bold"
+              title={`Orientation: ${Math.round(orientation)}° (${getCompassFullName(orientation)}). Double-click canvas compass or click here to reset North.`}
+            >
+              <Compass size={15} className={Math.round(orientation) !== 0 ? 'text-blue-600' : 'text-slate-500'} />
+              <span>{Math.round(orientation)}°</span>
             </button>
 
             <div className="w-px h-5 bg-slate-200 mx-1.5" />
