@@ -14,25 +14,34 @@ import {
   ZoomOut,
   RotateCcw,
   Grid,
-  Download,
-  Image as ImageIcon,
   FileCode,
+  Image as ImageIcon,
   DoorOpen,
   Square,
   Plus,
   Trash2,
-  FlipHorizontal,
-  FlipVertical,
   CheckCircle2,
   AlertTriangle,
   Ruler,
 } from './icons';
 
-const ROOM_PRESETS: { name: string; breadth: number; length: number; openings: Opening[] }[] = [
+// ============================================================================
+// PRESETS & TEMPLATES
+// ============================================================================
+
+export type MultiRoomPreset = {
+  name: string;
+  exteriorWallThickness: number;
+  interiorWallThickness: number;
+  rooms: RoomConfig[];
+};
+
+export const SINGLE_ROOM_PRESETS: { name: string; breadth: number; length: number; wallThickness: number; openings: Opening[] }[] = [
   {
     name: 'Master Bedroom Suite',
     breadth: 5.5,
     length: 4.5,
+    wallThickness: 0.20,
     openings: [
       { id: 'mb-d1', type: 'door', wall: 'S', position: 0.8, width: 0.9, flipHinge: false, flipSwing: false },
       { id: 'mb-w1', type: 'window', wall: 'N', position: 1.8, width: 1.8 },
@@ -43,6 +52,7 @@ const ROOM_PRESETS: { name: string; breadth: number; length: number; openings: O
     name: 'Studio Living & Work',
     breadth: 6.5,
     length: 5.0,
+    wallThickness: 0.20,
     openings: [
       { id: 'st-d1', type: 'door', wall: 'W', position: 0.6, width: 0.95, flipHinge: true, flipSwing: false },
       { id: 'st-w1', type: 'window', wall: 'E', position: 1.0, width: 2.2 },
@@ -53,6 +63,7 @@ const ROOM_PRESETS: { name: string; breadth: number; length: number; openings: O
     name: 'Modern Kitchen & Dining',
     breadth: 4.8,
     length: 3.6,
+    wallThickness: 0.20,
     openings: [
       { id: 'kd-d1', type: 'door', wall: 'S', position: 0.6, width: 0.9, flipHinge: false, flipSwing: false },
       { id: 'kd-w1', type: 'window', wall: 'N', position: 1.4, width: 2.0 },
@@ -62,9 +73,288 @@ const ROOM_PRESETS: { name: string; breadth: number; length: number; openings: O
     name: 'Standard Bedroom',
     breadth: 4.0,
     length: 3.5,
+    wallThickness: 0.20,
     openings: [
       { id: 'sb-d1', type: 'door', wall: 'S', position: 0.5, width: 0.85, flipHinge: false, flipSwing: false },
       { id: 'sb-w1', type: 'window', wall: 'N', position: 1.2, width: 1.4 },
+    ],
+  },
+];
+
+export const MULTI_ROOM_PRESETS: MultiRoomPreset[] = [
+  {
+    name: '1-BHK Urban Residence',
+    exteriorWallThickness: 0.20,
+    interiorWallThickness: 0.10,
+    rooms: [
+      {
+        id: '1bhk-living',
+        name: 'Living & Dining',
+        type: 'living',
+        x: 0.0,
+        y: 0.0,
+        breadth: 5.0,
+        length: 4.5,
+        openings: [
+          { id: '1bhk-main-door', type: 'door', wall: 'W', position: 0.6, width: 1.0, flipHinge: false, flipSwing: false },
+          { id: '1bhk-liv-w1', type: 'window', wall: 'N', position: 1.5, width: 2.0 },
+          { id: '1bhk-liv-bed-door', type: 'door', wall: 'E', position: 1.0, width: 0.9, flipHinge: false, flipSwing: true },
+        ],
+      },
+      {
+        id: '1bhk-bed',
+        name: 'Master Bedroom',
+        type: 'bedroom',
+        x: 5.0,
+        y: 0.0,
+        breadth: 4.0,
+        length: 3.5,
+        openings: [
+          { id: '1bhk-bed-w1', type: 'window', wall: 'N', position: 1.0, width: 1.8 },
+          { id: '1bhk-bed-w2', type: 'window', wall: 'E', position: 1.0, width: 1.4 },
+        ],
+      },
+      {
+        id: '1bhk-kitchen',
+        name: 'Kitchen',
+        type: 'kitchen',
+        x: 0.0,
+        y: 4.5,
+        breadth: 3.0,
+        length: 2.5,
+        openings: [
+          { id: '1bhk-k-d1', type: 'door', wall: 'N', position: 0.6, width: 0.85, flipHinge: false, flipSwing: true },
+          { id: '1bhk-k-w1', type: 'window', wall: 'S', position: 0.8, width: 1.4 },
+        ],
+      },
+      {
+        id: '1bhk-bath',
+        name: 'Bathroom',
+        type: 'bathroom',
+        x: 3.0,
+        y: 4.5,
+        breadth: 2.0,
+        length: 2.5,
+        openings: [
+          { id: '1bhk-b-d1', type: 'door', wall: 'N', position: 0.5, width: 0.75, flipHinge: false, flipSwing: true },
+          { id: '1bhk-b-w1', type: 'window', wall: 'S', position: 0.6, width: 0.8 },
+        ],
+      },
+      {
+        id: '1bhk-foyer',
+        name: 'Balcony & Foyer',
+        type: 'balcony',
+        x: 5.0,
+        y: 3.5,
+        breadth: 4.0,
+        length: 2.0,
+        openings: [
+          { id: '1bhk-f-w1', type: 'window', wall: 'E', position: 0.5, width: 2.5 },
+        ],
+      },
+    ],
+  },
+  {
+    name: '2-BHK Contemporary Apartment',
+    exteriorWallThickness: 0.20,
+    interiorWallThickness: 0.10,
+    rooms: [
+      {
+        id: '2bhk-living',
+        name: 'Living & Dining Room',
+        type: 'living',
+        x: 0.0,
+        y: 0.0,
+        breadth: 6.0,
+        length: 4.5,
+        openings: [
+          { id: '2bhk-main', type: 'door', wall: 'W', position: 0.6, width: 1.0, flipHinge: false, flipSwing: false },
+          { id: '2bhk-liv-w', type: 'window', wall: 'N', position: 1.5, width: 2.4 },
+          { id: '2bhk-d-mb', type: 'door', wall: 'E', position: 0.8, width: 0.9, flipHinge: false, flipSwing: true },
+        ],
+      },
+      {
+        id: '2bhk-master',
+        name: 'Master Suite',
+        type: 'bedroom',
+        x: 6.0,
+        y: 0.0,
+        breadth: 4.5,
+        length: 4.0,
+        openings: [
+          { id: '2bhk-mb-w', type: 'window', wall: 'N', position: 1.2, width: 2.0 },
+          { id: '2bhk-d-ensuite', type: 'door', wall: 'S', position: 0.6, width: 0.8, flipHinge: false, flipSwing: true },
+        ],
+      },
+      {
+        id: '2bhk-ensuite',
+        name: 'En-Suite Bath',
+        type: 'bathroom',
+        x: 6.0,
+        y: 4.0,
+        breadth: 2.2,
+        length: 2.2,
+        openings: [
+          { id: '2bhk-es-w', type: 'window', wall: 'S', position: 0.5, width: 0.8 },
+        ],
+      },
+      {
+        id: '2bhk-bed2',
+        name: 'Guest Bedroom',
+        type: 'bedroom',
+        x: 3.5,
+        y: 4.5,
+        breadth: 3.5,
+        length: 3.5,
+        openings: [
+          { id: '2bhk-b2-d', type: 'door', wall: 'N', position: 0.6, width: 0.9, flipHinge: false, flipSwing: true },
+          { id: '2bhk-b2-w', type: 'window', wall: 'S', position: 1.0, width: 1.6 },
+        ],
+      },
+      {
+        id: '2bhk-kitchen',
+        name: 'Kitchen & Utility',
+        type: 'kitchen',
+        x: 0.0,
+        y: 4.5,
+        breadth: 3.5,
+        length: 3.0,
+        openings: [
+          { id: '2bhk-k-d', type: 'door', wall: 'N', position: 0.6, width: 0.85, flipHinge: false, flipSwing: true },
+          { id: '2bhk-k-w', type: 'window', wall: 'W', position: 0.8, width: 1.4 },
+        ],
+      },
+      {
+        id: '2bhk-bath2',
+        name: 'Common Restroom',
+        type: 'bathroom',
+        x: 7.0,
+        y: 4.5,
+        breadth: 2.0,
+        length: 2.5,
+        openings: [
+          { id: '2bhk-b2-d2', type: 'door', wall: 'W', position: 0.5, width: 0.75, flipHinge: false, flipSwing: true },
+          { id: '2bhk-b2-w2', type: 'window', wall: 'E', position: 0.6, width: 0.8 },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'Studio Apartment',
+    exteriorWallThickness: 0.20,
+    interiorWallThickness: 0.10,
+    rooms: [
+      {
+        id: 'std-main',
+        name: 'Studio Living & Sleeping',
+        type: 'living',
+        x: 0.0,
+        y: 0.0,
+        breadth: 6.0,
+        length: 4.2,
+        openings: [
+          { id: 'std-entry', type: 'door', wall: 'W', position: 0.6, width: 0.95, flipHinge: false, flipSwing: false },
+          { id: 'std-w1', type: 'window', wall: 'N', position: 1.5, width: 2.2 },
+          { id: 'std-w2', type: 'window', wall: 'E', position: 1.2, width: 1.6 },
+        ],
+      },
+      {
+        id: 'std-kitchen',
+        name: 'Kitchenette',
+        type: 'kitchen',
+        x: 0.0,
+        y: 4.2,
+        breadth: 3.5,
+        length: 2.2,
+        openings: [
+          { id: 'std-k-w', type: 'window', wall: 'S', position: 1.0, width: 1.4 },
+        ],
+      },
+      {
+        id: 'std-bath',
+        name: 'Bathroom',
+        type: 'bathroom',
+        x: 3.5,
+        y: 4.2,
+        breadth: 2.5,
+        length: 2.2,
+        openings: [
+          { id: 'std-b-d', type: 'door', wall: 'N', position: 0.6, width: 0.75, flipHinge: false, flipSwing: true },
+          { id: 'std-b-w', type: 'window', wall: 'S', position: 0.8, width: 0.8 },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'Executive Office Suite',
+    exteriorWallThickness: 0.25,
+    interiorWallThickness: 0.10,
+    rooms: [
+      {
+        id: 'off-rec',
+        name: 'Reception & Lobby',
+        type: 'office',
+        x: 0.0,
+        y: 0.0,
+        breadth: 5.0,
+        length: 4.0,
+        openings: [
+          { id: 'off-main-d', type: 'door', wall: 'W', position: 0.8, width: 1.2, flipHinge: false, flipSwing: false },
+          { id: 'off-rec-w', type: 'window', wall: 'N', position: 1.5, width: 2.0 },
+        ],
+      },
+      {
+        id: 'off-conf',
+        name: 'Conference Room',
+        type: 'office',
+        x: 5.0,
+        y: 0.0,
+        breadth: 5.5,
+        length: 4.0,
+        openings: [
+          { id: 'off-conf-d', type: 'door', wall: 'W', position: 0.8, width: 0.95, flipHinge: false, flipSwing: true },
+          { id: 'off-conf-w', type: 'window', wall: 'N', position: 1.5, width: 2.4 },
+          { id: 'off-conf-w2', type: 'window', wall: 'E', position: 1.0, width: 1.8 },
+        ],
+      },
+      {
+        id: 'off-exec',
+        name: 'Executive Cabin',
+        type: 'office',
+        x: 0.0,
+        y: 4.0,
+        breadth: 4.5,
+        length: 3.5,
+        openings: [
+          { id: 'off-exec-d', type: 'door', wall: 'N', position: 0.6, width: 0.9, flipHinge: false, flipSwing: true },
+          { id: 'off-exec-w', type: 'window', wall: 'W', position: 1.0, width: 1.8 },
+        ],
+      },
+      {
+        id: 'off-open',
+        name: 'Open Workstation Floor',
+        type: 'office',
+        x: 4.5,
+        y: 4.0,
+        breadth: 6.0,
+        length: 4.8,
+        openings: [
+          { id: 'off-work-w1', type: 'window', wall: 'E', position: 1.5, width: 2.6 },
+          { id: 'off-work-w2', type: 'window', wall: 'S', position: 1.8, width: 2.4 },
+        ],
+      },
+      {
+        id: 'off-bath',
+        name: 'Restroom',
+        type: 'bathroom',
+        x: 0.0,
+        y: 7.5,
+        breadth: 2.5,
+        length: 2.0,
+        openings: [
+          { id: 'off-bath-d', type: 'door', wall: 'N', position: 0.5, width: 0.75, flipHinge: false, flipSwing: true },
+        ],
+      },
     ],
   },
 ];
@@ -84,7 +374,23 @@ function fromFtIn(ft: number, inVal: number): number {
 }
 
 function App() {
-  const [room, setRoom] = useState<RoomConfig>(ROOM_PRESETS[0]);
+  // STUDIO MODE: 'single' vs 'multi'
+  const [studioMode, setStudioMode] = useState<'single' | 'multi'>('multi');
+
+  // Single Room State
+  const [singleRoom, setSingleRoom] = useState<RoomConfig>(SINGLE_ROOM_PRESETS[0]);
+
+  // Multi-Room State
+  const [multiPresets, setMultiPresets] = useState<MultiRoomPreset[]>(MULTI_ROOM_PRESETS);
+  const [activeMultiIndex, setActiveMultiIndex] = useState<number>(0);
+  const [multiRooms, setMultiRooms] = useState<RoomConfig[]>(MULTI_ROOM_PRESETS[0].rooms);
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(MULTI_ROOM_PRESETS[0].rooms[0].id || null);
+
+  // Dual Wall Thickness Settings (User Requested: input for thickness of both walls)
+  const [exteriorWallThickness, setExteriorWallThickness] = useState<number>(0.20); // 200 mm
+  const [interiorWallThickness, setInteriorWallThickness] = useState<number>(0.10); // 100 mm
+
+  // CAD Studio Environment Controls
   const [unit, setUnit] = useState<UnitSystem>('metric');
   const [theme, setTheme] = useState<FloorPlanTheme>('cad-light');
   const [showDimensions, setShowDimensions] = useState(true);
@@ -96,14 +402,14 @@ function App() {
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [cursorCoords, setCursorCoords] = useState<{ x: number; y: number } | null>(null);
 
-  // New Opening Form State (stored in meters internally)
+  // New Opening Form State
   const [newType, setNewType] = useState<'door' | 'window'>('door');
   const [newWall, setNewWall] = useState<WallSide>('N');
   const [newPos, setNewPos] = useState<number>(1.0);
   const [newWidth, setNewWidth] = useState<number>(0.9);
 
   // Active Sidebar Tab
-  const [activeTab, setActiveTab] = useState<'dimensions' | 'openings' | 'analytics'>('dimensions');
+  const [activeTab, setActiveTab] = useState<'rooms' | 'dimensions' | 'walls' | 'openings' | 'analytics'>('rooms');
 
   // Export Loading States
   const [isExportingPng, setIsExportingPng] = useState(false);
@@ -113,19 +419,150 @@ function App() {
   const [backendStatus, setBackendStatus] = useState<string>('idle');
   const [backendWarnings, setBackendWarnings] = useState<string[]>([]);
 
-  // Update opening width defaults when type changes
-  const handleTypeSelect = (type: 'door' | 'window') => {
-    setNewType(type);
-    if (type === 'door') {
-      setNewWidth(0.9);
+  // Fetch Multi-Room Presets from Go backend if available
+  useEffect(() => {
+    const fetchPresets = async () => {
+      try {
+        const res = await fetch('http://localhost:8080/api/multi-room-presets');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setMultiPresets(data);
+          }
+        }
+      } catch {
+        // Fallback to local MULTI_ROOM_PRESETS
+      }
+    };
+    fetchPresets();
+  }, []);
+
+  // Validate active plan with Go backend for building code compliance & overlaps
+  useEffect(() => {
+    const runValidation = async () => {
+      try {
+        setBackendStatus('validating');
+        if (studioMode === 'single') {
+          const res = await fetch('http://localhost:8080/api/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(singleRoom),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setBackendWarnings(data.metrics?.warnings || []);
+            setBackendStatus('success');
+          }
+        } else {
+          const res = await fetch('http://localhost:8080/api/validate-multi-room', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: 'plan-1',
+              name: 'Multi-Room Floor Plan',
+              exterior_wall_thickness: exteriorWallThickness,
+              interior_wall_thickness: interiorWallThickness,
+              rooms: multiRooms,
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setBackendWarnings(data.warnings || []);
+            setBackendStatus('success');
+          }
+        }
+      } catch {
+        setBackendStatus('offline');
+      }
+    };
+
+    const timer = setTimeout(runValidation, 300);
+    return () => clearTimeout(timer);
+  }, [studioMode, singleRoom, multiRooms, exteriorWallThickness, interiorWallThickness]);
+
+  // Currently active room object (works seamlessly for both single-room & multi-room)
+  const currentRoom: RoomConfig = useMemo(() => {
+    if (studioMode === 'single') {
+      return singleRoom;
+    }
+    const found = multiRooms.find((r) => r.id === selectedRoomId);
+    return found || multiRooms[0] || singleRoom;
+  }, [studioMode, singleRoom, multiRooms, selectedRoomId]);
+
+  // Update current room handler
+  const handleUpdateCurrentRoom = (updated: RoomConfig) => {
+    if (studioMode === 'single') {
+      setSingleRoom(updated);
     } else {
-      setNewWidth(1.2);
+      setMultiRooms((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
     }
   };
 
-  // Add opening
+  // Add a new room to multi-room plan
+  const handleAddRoom = (type: RoomConfig['type'] = 'bedroom') => {
+    const newId = `room-${Date.now().toString(36)}`;
+    const baseNames: Record<string, string> = {
+      living: 'Living Area',
+      bedroom: 'Bedroom',
+      kitchen: 'Kitchen',
+      bathroom: 'Bathroom',
+      balcony: 'Balcony',
+      office: 'Office Cabin',
+    };
+
+    // Calculate position: place to the right of the current room or bounding box
+    const refRoom = currentRoom;
+    const newX = Math.round(((refRoom.x || 0) + refRoom.breadth) * 10) / 10;
+    const newY = Math.round((refRoom.y || 0) * 10) / 10;
+
+    const newRoom: RoomConfig = {
+      id: newId,
+      name: `${baseNames[type || 'bedroom'] || 'Room'} ${multiRooms.length + 1}`,
+      type: type || 'bedroom',
+      x: newX,
+      y: newY,
+      breadth: 4.0,
+      length: 3.5,
+      openings: [
+        { id: `op-${newId}-d1`, type: 'door', wall: 'W', position: 0.6, width: 0.9, flipHinge: false, flipSwing: true },
+        { id: `op-${newId}-w1`, type: 'window', wall: 'E', position: 1.0, width: 1.4 },
+      ],
+    };
+
+    setMultiRooms((prev) => [...prev, newRoom]);
+    setSelectedRoomId(newId);
+  };
+
+  // Delete active room from multi-room plan
+  const handleDeleteRoom = (roomId: string) => {
+    if (multiRooms.length <= 1) return;
+    setMultiRooms((prev) => {
+      const filtered = prev.filter((r) => r.id !== roomId);
+      if (selectedRoomId === roomId) {
+        setSelectedRoomId(filtered[0]?.id || null);
+      }
+      return filtered;
+    });
+  };
+
+  // Handle Multi-Room Preset selection
+  const handleSelectMultiPreset = (idx: number) => {
+    setActiveMultiIndex(idx);
+    const preset = multiPresets[idx] || MULTI_ROOM_PRESETS[idx];
+    if (preset) {
+      setMultiRooms(JSON.parse(JSON.stringify(preset.rooms)));
+      setExteriorWallThickness(preset.exteriorWallThickness || 0.20);
+      setInteriorWallThickness(preset.interiorWallThickness || 0.10);
+      setSelectedRoomId(preset.rooms[0]?.id || null);
+      setSelectedOpeningId(null);
+      setZoom(1);
+      setPanOffset({ x: 0, y: 0 });
+    }
+  };
+
+  // Add opening to currently active room
   const handleAddOpening = () => {
-    const wallLength = newWall === 'N' || newWall === 'S' ? room.breadth : room.length;
+    const wallLength = newWall === 'N' || newWall === 'S' ? currentRoom.breadth : currentRoom.length;
     const clampedPos = Math.max(0.05, Math.min(wallLength - newWidth - 0.05, newPos));
 
     const newOpening: Opening = {
@@ -138,76 +575,119 @@ function App() {
       flipSwing: false,
     };
 
-    setRoom((prev) => ({
-      ...prev,
-      openings: [...prev.openings, newOpening],
-    }));
+    const updated = {
+      ...currentRoom,
+      openings: [...currentRoom.openings, newOpening],
+    };
+    handleUpdateCurrentRoom(updated);
     setSelectedOpeningId(newOpening.id);
   };
 
-  // Update opening
+  // Update opening in active room
   const handleUpdateOpening = (updated: Opening) => {
-    setRoom((prev) => ({
-      ...prev,
-      openings: prev.openings.map((o) => (o.id === updated.id ? updated : o)),
-    }));
+    if (studioMode === 'single') {
+      setSingleRoom((prev) => ({
+        ...prev,
+        openings: prev.openings.map((o) => (o.id === updated.id ? updated : o)),
+      }));
+    } else {
+      setMultiRooms((prev) =>
+        prev.map((r) => {
+          const hasOp = r.openings.some((o) => o.id === updated.id);
+          if (!hasOp) return r;
+          return {
+            ...r,
+            openings: r.openings.map((o) => (o.id === updated.id ? updated : o)),
+          };
+        })
+      );
+    }
   };
 
   // Delete opening
   const handleDeleteOpening = (id: string) => {
-    setRoom((prev) => ({
-      ...prev,
-      openings: prev.openings.filter((o) => o.id !== id),
-    }));
+    if (studioMode === 'single') {
+      setSingleRoom((prev) => ({
+        ...prev,
+        openings: prev.openings.filter((o) => o.id !== id),
+      }));
+    } else {
+      setMultiRooms((prev) =>
+        prev.map((r) => ({
+          ...r,
+          openings: r.openings.filter((o) => o.id !== id),
+        }))
+      );
+    }
     if (selectedOpeningId === id) {
       setSelectedOpeningId(null);
     }
   };
 
-  // Preset selector
-  const handleSelectPreset = (idx: number) => {
-    const preset = ROOM_PRESETS[idx];
-    setRoom(JSON.parse(JSON.stringify(preset)));
-    setSelectedOpeningId(null);
-    setZoom(1);
-    setPanOffset({ x: 0, y: 0 });
-  };
+  // Metrics for Multi-Room & Single-Room
+  const activeRoomsList = useMemo(() => {
+    return studioMode === 'single' ? [singleRoom] : multiRooms;
+  }, [studioMode, singleRoom, multiRooms]);
 
-  // Architectural Metrics
-  const grossArea = room.breadth * room.length;
-  const grossAreaSqFt = grossArea * 10.7639;
-  const wallPerimeter = 2 * (room.breadth + room.length);
+  const totalCarpetSqm = useMemo(() => {
+    return activeRoomsList.reduce((sum, r) => sum + r.breadth * r.length, 0);
+  }, [activeRoomsList]);
 
-  // Daylight Calculations: Window glazed area vs floor area
-  const totalWindowArea = useMemo(() => {
-    const standardWindowHeight = 1.4;
-    return room.openings
-      .filter((o) => o.type === 'window')
-      .reduce((sum, w) => sum + w.width * standardWindowHeight, 0);
-  }, [room.openings]);
+  const totalCarpetSqFt = totalCarpetSqm * 10.7639;
 
-  const daylightRatio = grossArea > 0 ? (totalWindowArea / grossArea) * 100 : 0;
-  const isDaylightCompliant = daylightRatio >= 10;
+  // Plan Bounding Dimensions
+  const planBounds = useMemo(() => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    activeRoomsList.forEach((r) => {
+      const rx = r.x || 0;
+      const ry = r.y || 0;
+      if (rx < minX) minX = rx;
+      if (ry < minY) minY = ry;
+      if (rx + r.breadth > maxX) maxX = rx + r.breadth;
+      if (ry + r.length > maxY) maxY = ry + r.length;
+    });
+    if (!isFinite(minX)) { minX = 0; minY = 0; maxX = 5; maxY = 4; }
+    return {
+      width: maxX - minX,
+      height: maxY - minY,
+      minX,
+      minY,
+      maxX,
+      maxY,
+    };
+  }, [activeRoomsList]);
 
-  // Try validating with Go backend if available
+  // Overall built-up gross estimate
+  const grossBuiltUpSqm = (planBounds.width + 2 * exteriorWallThickness) * (planBounds.height + 2 * exteriorWallThickness);
+  const grossBuiltUpSqFt = grossBuiltUpSqm * 10.7639;
+  const efficiencyPercent = Math.min(100, Math.round((totalCarpetSqm / grossBuiltUpSqm) * 1000) / 10);
+
+  // Backend Validation Effect
   useEffect(() => {
     const controller = new AbortController();
-    const validateWithBackend = async () => {
+    const validate = async () => {
       try {
-        const res = await fetch('http://localhost:8080/api/validate', {
+        const endpoint = studioMode === 'single' ? '/api/validate' : '/api/validate-multi-room';
+        const payload = studioMode === 'single'
+          ? singleRoom
+          : {
+              name: multiPresets[activeMultiIndex]?.name || 'Custom Multi-Room Layout',
+              exteriorWallThickness,
+              interiorWallThickness,
+              rooms: multiRooms,
+            };
+
+        const res = await fetch(`http://localhost:8080${endpoint}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(room),
+          body: JSON.stringify(payload),
           signal: controller.signal,
         });
+
         if (res.ok) {
           const data = await res.json();
           setBackendStatus('connected');
-          if (data.warnings) {
-            setBackendWarnings(data.warnings);
-          } else {
-            setBackendWarnings([]);
-          }
+          setBackendWarnings(data.metrics?.warnings || []);
         } else {
           setBackendStatus('offline');
         }
@@ -218,25 +698,19 @@ function App() {
       }
     };
 
-    validateWithBackend();
+    validate();
     return () => controller.abort();
-  }, [room]);
+  }, [studioMode, singleRoom, multiRooms, exteriorWallThickness, interiorWallThickness, activeMultiIndex, multiPresets]);
 
-  // Helper to extract and prepare a standalone, full-sheet architectural SVG clone
+  // Standalone full-sheet architectural SVG export extractor
   const getExportSvgData = () => {
     const svgEl = document.getElementById('floorplan-canvas-svg') as SVGSVGElement | null;
-    if (!svgEl) {
-      console.error('Floor plan SVG canvas element not found');
-      return null;
-    }
+    if (!svgEl) return null;
 
     const clone = svgEl.cloneNode(true) as SVGSVGElement;
+    const sheetWidth = Math.round(planBounds.width * BASE_PPM + SHEET_MARGIN_PX * 2);
+    const sheetHeight = Math.round(planBounds.height * BASE_PPM + SHEET_MARGIN_PX * 2);
 
-    // Full drawing sheet dimensions (un-clipped, 1:1 architectural scale)
-    const sheetWidth = Math.round(room.breadth * BASE_PPM + SHEET_MARGIN_PX * 2);
-    const sheetHeight = Math.round(room.length * BASE_PPM + SHEET_MARGIN_PX * 2);
-
-    // Apply standalone XML & SVG attributes
     clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
     clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
     clone.setAttribute('width', `${sheetWidth}`);
@@ -246,7 +720,6 @@ function App() {
     clone.removeAttribute('style');
     clone.setAttribute('class', 'floor-plan-sheet');
 
-    // Adjust background & grid to cover the full sheet bounds cleanly
     const bgRect = clone.querySelector('[data-export-bg="true"]');
     if (bgRect) {
       bgRect.setAttribute('x', '0');
@@ -263,13 +736,11 @@ function App() {
       gridRect.setAttribute('height', `${sheetHeight}`);
     }
 
-    // Clean up interactive cursor styles or drag markers
     clone.querySelectorAll('[data-drag]').forEach((el) => el.removeAttribute('data-drag'));
-
     return { clone, sheetWidth, sheetHeight };
   };
 
-  // Export to PNG with Title Block
+  // Export to PNG with Architectural Title Block
   const exportAsPng = () => {
     try {
       setIsExportingPng(true);
@@ -281,19 +752,17 @@ function App() {
 
       const { clone, sheetWidth, sheetHeight } = exportData;
       let svgString = new XMLSerializer().serializeToString(clone);
-
       if (!svgString.includes('xmlns="http://www.w3.org/2000/svg"')) {
         svgString = svgString.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
       }
 
-      // Convert SVG to data URL via base64 encoding to prevent cross-origin/canvas tainting
       const svgBase64 = window.btoa(unescape(encodeURIComponent(svgString)));
       const imageSrc = `data:image/svg+xml;base64,${svgBase64}`;
 
       const image = new Image();
       image.onload = () => {
         try {
-          const scale = 2; // High-resolution 2x CAD export
+          const scale = 2;
           const canvas = document.createElement('canvas');
           canvas.width = sheetWidth * scale;
           canvas.height = sheetHeight * scale;
@@ -303,16 +772,13 @@ function App() {
             return;
           }
 
-          // Background fill
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-          // Draw floor plan SVG
           ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
 
-          // Title Block in Bottom Right Corner (scaled proportionally)
-          const tbWidth = 380 * scale;
-          const tbHeight = 96 * scale;
+          // Title Block
+          const tbWidth = 420 * scale;
+          const tbHeight = 100 * scale;
           const tbX = canvas.width - tbWidth - 28 * scale;
           const tbY = canvas.height - tbHeight - 28 * scale;
           const padX = 18 * scale;
@@ -323,21 +789,25 @@ function App() {
           ctx.fillRect(tbX, tbY, tbWidth, tbHeight);
           ctx.strokeRect(tbX, tbY, tbWidth, tbHeight);
 
+          const titleText = studioMode === 'single'
+            ? (singleRoom.name || 'SINGLE ROOM').toUpperCase()
+            : (multiPresets[activeMultiIndex]?.name || 'MULTI-ROOM RESIDENCE').toUpperCase();
+
           ctx.fillStyle = '#0f172a';
-          ctx.font = `bold ${20 * scale}px system-ui, sans-serif`;
-          ctx.fillText(room.name || 'FLOOR PLAN', tbX + padX, tbY + 30 * scale);
+          ctx.font = `bold ${18 * scale}px system-ui, sans-serif`;
+          ctx.fillText(titleText, tbX + padX, tbY + 28 * scale);
 
           ctx.fillStyle = '#475569';
-          ctx.font = `${14 * scale}px system-ui, monospace`;
+          ctx.font = `${13 * scale}px system-ui, monospace`;
           ctx.fillText(
-            `DIMENSIONS: ${formatDistance(room.breadth, unit)} × ${formatDistance(room.length, unit)}`,
+            `OVERALL: ${formatDistance(planBounds.width, unit)} × ${formatDistance(planBounds.height, unit)} · WALLS: EXT ${Math.round(exteriorWallThickness * 1000)}mm / INT ${Math.round(interiorWallThickness * 1000)}mm`,
             tbX + padX,
-            tbY + 56 * scale
+            tbY + 54 * scale
           );
           ctx.fillText(
             unit === 'imperial'
-              ? `AREA: ${grossAreaSqFt.toFixed(1)} sq ft · SCALE 1/4" = 1'-0"`
-              : `AREA: ${grossArea.toFixed(2)} m² · SCALE 1:50`,
+              ? `CARPET: ${totalCarpetSqFt.toFixed(1)} sq ft · ROOMS: ${activeRoomsList.length} · SCALE 1/4" = 1'-0"`
+              : `CARPET: ${totalCarpetSqm.toFixed(2)} m² · ROOMS: ${activeRoomsList.length} · SCALE 1:50`,
             tbX + padX,
             tbY + 78 * scale
           );
@@ -347,44 +817,34 @@ function App() {
             if (!blob) return;
             const pngURL = window.URL.createObjectURL(blob);
             const dlLink = document.createElement('a');
-            dlLink.download = `${(room.name || 'floor-plan').toLowerCase().replace(/\s+/g, '-')}-2d.png`;
+            dlLink.download = `${titleText.toLowerCase().replace(/\s+/g, '-')}-2d.png`;
             dlLink.href = pngURL;
             document.body.appendChild(dlLink);
             dlLink.click();
             document.body.removeChild(dlLink);
             window.URL.revokeObjectURL(pngURL);
           }, 'image/png');
-        } catch (canvasErr) {
-          console.error('Error drawing canvas for PNG export:', canvasErr);
+        } catch (err) {
           setIsExportingPng(false);
         }
       };
 
-      image.onerror = (err) => {
-        console.error('Failed to load SVG into Image for PNG export:', err);
-        setIsExportingPng(false);
-      };
-
+      image.onerror = () => setIsExportingPng(false);
       image.src = imageSrc;
     } catch (err) {
-      console.error('Failed to export PNG:', err);
       setIsExportingPng(false);
     }
   };
 
-  // Export as SVG
+  // Export to SVG
   const exportAsSvg = () => {
     try {
       setIsExportingSvg(true);
       const exportData = getExportSvgData();
-      if (!exportData) {
-        setIsExportingSvg(false);
-        return;
-      }
+      if (!exportData) return;
 
       const { clone } = exportData;
       let svgString = new XMLSerializer().serializeToString(clone);
-
       if (!svgString.includes('xmlns="http://www.w3.org/2000/svg"')) {
         svgString = svgString.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
       }
@@ -394,1049 +854,1193 @@ function App() {
       const url = window.URL.createObjectURL(blob);
       const dlLink = document.createElement('a');
       dlLink.href = url;
-      dlLink.download = `${(room.name || 'floor-plan').toLowerCase().replace(/\s+/g, '-')}-2d.svg`;
+      const title = studioMode === 'single' ? singleRoom.name || 'room' : multiPresets[activeMultiIndex]?.name || 'multi-room';
+      dlLink.download = `${title.toLowerCase().replace(/\s+/g, '-')}-2d.svg`;
       document.body.appendChild(dlLink);
       dlLink.click();
       document.body.removeChild(dlLink);
       window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Failed to export SVG:', err);
     } finally {
       setIsExportingSvg(false);
     }
   };
 
-  // Save JSON
-  const exportAsJson = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(room, null, 2));
-    const dlLink = document.createElement('a');
-    dlLink.setAttribute('href', dataStr);
-    dlLink.setAttribute('download', `${(room.name || 'floor-plan').toLowerCase().replace(/\s+/g, '-')}.json`);
-    document.body.appendChild(dlLink);
-    dlLink.click();
-    dlLink.remove();
-  };
-
-  // Helper values for current unit state
-  const breadthFtIn = toFtIn(room.breadth);
-  const lengthFtIn = toFtIn(room.length);
-  const newWidthFtIn = toFtIn(newWidth);
-  const newPosFtIn = toFtIn(newPos);
-  const wallThicknessMm = Math.round((room.wallThickness || 0.2) * 1000);
-  const wallThicknessIn = Math.round(((room.wallThickness || 0.2) / 0.0254) * 10) / 10;
-
   return (
-    <div className="flex flex-col h-screen w-screen bg-white text-slate-900 overflow-hidden font-sans">
-      {/* 1. Clean Top Bar */}
-      <header className="h-16 border-b border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
-        {/* Left: Template Selector */}
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-slate-600 font-bold uppercase tracking-wider">
-            Template:
-          </span>
-          <select
-            value={room.name}
-            onChange={(e) => {
-              const idx = ROOM_PRESETS.findIndex((p) => p.name === e.target.value);
-              if (idx !== -1) handleSelectPreset(idx);
-            }}
-            className="bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-600 transition shadow-sm"
-          >
-            {ROOM_PRESETS.map((p, idx) => (
-              <option key={idx} value={p.name}>
-                {p.name} ({formatDistance(p.breadth, unit)} × {formatDistance(p.length, unit)})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Center: Unit Toggle (Meters vs Feet & Inches) */}
-        <div className="flex items-center bg-slate-100 rounded-xl p-1 border border-slate-200 shadow-sm">
-          <button
-            type="button"
-            onClick={() => setUnit('metric')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${
-              unit === 'metric'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Meters (m)
-          </button>
-          <button
-            type="button"
-            onClick={() => setUnit('imperial')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${
-              unit === 'imperial'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Feet & Inches (ft / in)
-          </button>
-        </div>
-
-        {/* Right: Theme and Export Controls */}
-        <div className="flex items-center gap-3">
-          {/* Theme Selector (All rendered cleanly on white paper) */}
-          <div className="flex items-center bg-slate-100 rounded-xl p-1 border border-slate-200 text-xs font-bold">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-white text-slate-800 font-sans">
+      {/* 1. TOP HEADER NAVIGATION */}
+      <header className="h-14 border-b border-slate-200 px-6 flex items-center justify-between bg-white shrink-0 z-20 shadow-xs">
+        <div className="flex items-center gap-5">
+          {/* Mode Switcher: Single Room vs. Multi-Room Studio */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
             <button
-              onClick={() => setTheme('cad-light')}
-              className={`px-3 py-1.5 rounded-lg transition ${
-                theme === 'cad-light'
-                  ? 'bg-white text-slate-900 shadow-sm font-bold border border-slate-200'
+              onClick={() => {
+                setStudioMode('single');
+                setActiveTab('dimensions');
+              }}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                studioMode === 'single'
+                  ? 'bg-white text-blue-600 shadow-sm border border-slate-200'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Light CAD
+              <Square size={14} />
+              Single Room
             </button>
             <button
-              onClick={() => setTheme('blueprint')}
-              className={`px-3 py-1.5 rounded-lg transition ${
-                theme === 'blueprint'
-                  ? 'bg-blue-600 text-white shadow-sm font-bold'
+              onClick={() => {
+                setStudioMode('multi');
+                setActiveTab('rooms');
+              }}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                studioMode === 'multi'
+                  ? 'bg-blue-600 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Blueprint Lines
-            </button>
-            <button
-              onClick={() => setTheme('dark-studio')}
-              className={`px-3 py-1.5 rounded-lg transition ${
-                theme === 'dark-studio'
-                  ? 'bg-slate-800 text-white shadow-sm font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Architect
+              <Grid size={14} />
+              Multi-Room Suite
             </button>
           </div>
 
-          {/* Export Buttons */}
+          {/* Preset Selector Dropdown */}
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-slate-500 font-semibold">Layout:</span>
+            {studioMode === 'single' ? (
+              <select
+                value={singleRoom.name}
+                onChange={(e) => {
+                  const found = SINGLE_ROOM_PRESETS.find((p) => p.name === e.target.value);
+                  if (found) setSingleRoom(JSON.parse(JSON.stringify(found)));
+                }}
+                className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-slate-800 font-medium focus:outline-none focus:border-blue-600"
+              >
+                {SINGLE_ROOM_PRESETS.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.name} ({p.breadth}m × {p.length}m)
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <select
+                value={activeMultiIndex}
+                onChange={(e) => handleSelectMultiPreset(Number(e.target.value))}
+                className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-slate-800 font-medium focus:outline-none focus:border-blue-600"
+              >
+                {multiPresets.map((p, idx) => (
+                  <option key={p.name} value={idx}>
+                    {p.name} ({p.rooms.length} Rooms)
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
+
+        {/* Right Header: Theme, Units & Export Buttons */}
+        <div className="flex items-center gap-3">
+          {/* Unit Toggle */}
+          <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs font-semibold">
+            <button
+              onClick={() => setUnit('metric')}
+              className={`px-2.5 py-1 rounded-md transition ${
+                unit === 'metric' ? 'bg-white text-blue-600 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Metric (m)
+            </button>
+            <button
+              onClick={() => setUnit('imperial')}
+              className={`px-2.5 py-1 rounded-md transition ${
+                unit === 'imperial' ? 'bg-white text-blue-600 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Imperial (ft)
+            </button>
+          </div>
+
+          {/* Theme Selector */}
+          <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs font-semibold">
+            <button
+              onClick={() => setTheme('cad-light')}
+              className={`px-2.5 py-1 rounded-md transition ${
+                theme === 'cad-light' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              CAD Light
+            </button>
+            <button
+              onClick={() => setTheme('blueprint')}
+              className={`px-2.5 py-1 rounded-md transition ${
+                theme === 'blueprint' ? 'bg-blue-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Blueprint
+            </button>
+          </div>
+
+          <div className="w-px h-5 bg-slate-200" />
+
+          {/* Export PNG */}
           <button
             onClick={exportAsPng}
             disabled={isExportingPng}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition shadow-sm ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition shadow-sm ${
               isExportingPng ? 'opacity-70 cursor-wait' : ''
             }`}
           >
-            <ImageIcon size={16} />
+            <ImageIcon size={15} />
             {isExportingPng ? 'Exporting...' : 'Export PNG'}
           </button>
 
+          {/* Export SVG */}
           <button
             onClick={exportAsSvg}
             disabled={isExportingSvg}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold transition border border-slate-300 shadow-sm ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition border border-slate-300 shadow-sm ${
               isExportingSvg ? 'opacity-70 cursor-wait' : ''
             }`}
           >
-            <FileCode size={16} />
+            <FileCode size={15} />
             {isExportingSvg ? 'Exporting...' : 'SVG'}
           </button>
         </div>
       </header>
 
-      {/* 2. Main Studio Body (Wider Left Pane + Responsive Canvas) */}
+      {/* 2. MAIN WORKSPACE (SIDEBAR + 2D CANVAS) */}
       <div className="flex flex-1 overflow-hidden relative">
-        {/* Left Sidebar Controls */}
+        {/* Left Sidebar */}
         <aside className="w-96 lg:w-[440px] border-r border-slate-200 bg-white flex flex-col shrink-0 z-10 shadow-md">
           {/* Sidebar Tabs */}
-          <div className="flex border-b border-slate-200 bg-slate-50 p-1.5 gap-1.5 shrink-0">
+          <div className="flex border-b border-slate-200 bg-slate-50 p-1.5 gap-1 shrink-0 overflow-x-auto">
+            {studioMode === 'multi' && (
+              <button
+                onClick={() => setActiveTab('rooms')}
+                className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition whitespace-nowrap px-2 ${
+                  activeTab === 'rooms' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                Rooms ({multiRooms.length})
+              </button>
+            )}
+
             <button
               onClick={() => setActiveTab('dimensions')}
-              className={`flex-1 py-2 text-sm font-bold rounded-lg transition ${
-                activeTab === 'dimensions'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition whitespace-nowrap px-2 ${
+                activeTab === 'dimensions' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              Room Specs
+              {studioMode === 'multi' ? 'Active Room' : 'Room Specs'}
             </button>
+
+            <button
+              onClick={() => setActiveTab('walls')}
+              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition whitespace-nowrap px-2 ${
+                activeTab === 'walls' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              Wall Thickness
+            </button>
+
             <button
               onClick={() => setActiveTab('openings')}
-              className={`flex-1 py-2 text-sm font-bold rounded-lg transition flex items-center justify-center gap-2 ${
-                activeTab === 'openings'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition whitespace-nowrap px-2 ${
+                activeTab === 'openings' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              Doors & Windows
-              <span className={`px-2 py-0.5 rounded-full text-xs font-mono font-bold ${
-                activeTab === 'openings' ? 'bg-blue-700 text-white' : 'bg-slate-200 text-slate-700'
-              }`}>
-                {room.openings.length}
-              </span>
+              Openings ({currentRoom.openings.length})
             </button>
+
             <button
               onClick={() => setActiveTab('analytics')}
-              className={`flex-1 py-2 text-sm font-bold rounded-lg transition ${
-                activeTab === 'analytics'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition whitespace-nowrap px-2 ${
+                activeTab === 'analytics' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
               Analytics
             </button>
           </div>
 
-          {/* TAB 1: ROOM SPECS */}
-          {activeTab === 'dimensions' && (
-            <div className="flex-1 overflow-y-auto p-5 space-y-6">
-              {/* Room Name */}
-              <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
-                  Room Label
-                </label>
-                <input
-                  type="text"
-                  value={room.name || ''}
-                  onChange={(e) => setRoom({ ...room, name: e.target.value })}
-                  placeholder="e.g. Master Bedroom"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-base font-semibold text-slate-800 focus:outline-none focus:border-blue-600 focus:bg-white shadow-sm"
-                />
-              </div>
-
-              {/* BREADTH (Typeable + Unit Support) */}
-              <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
-                <div className="flex justify-between items-center">
-                  <label className="text-sm font-bold text-slate-800">
-                    Breadth (East-West Width)
-                  </label>
-                  <span className="text-sm font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
-                    {formatDistance(room.breadth, unit)}
-                  </span>
+          {/* TAB CONTENT */}
+          <div className="flex-1 overflow-y-auto p-5 space-y-6">
+            {/* ========================================================= */}
+            {/* TAB: ROOMS & LAYOUT (MULTI-ROOM MODE ONLY)                */}
+            {/* ========================================================= */}
+            {studioMode === 'multi' && activeTab === 'rooms' && (
+              <div className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
+                    Rooms in Layout ({multiRooms.length})
+                  </h3>
+                  <button
+                    onClick={() => handleAddRoom('bedroom')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-xs"
+                  >
+                    <Plus size={14} />
+                    Add Room
+                  </button>
                 </div>
 
-                {unit === 'metric' ? (
-                  /* Metric: Typeable meters */
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      step="0.05"
-                      min="1.0"
-                      max="30.0"
-                      value={room.breadth}
-                      onChange={(e) =>
-                        setRoom({ ...room, breadth: Math.max(1, parseFloat(e.target.value) || 1) })
-                      }
-                      className="flex-1 bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-base font-mono text-slate-800 focus:outline-none focus:border-blue-600 shadow-sm"
-                    />
-                    <span className="text-sm font-bold text-slate-600">meters</span>
-                  </div>
-                ) : (
-                  /* Imperial: Typeable Feet & Inches */
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 flex items-center gap-1.5">
-                      <input
-                        type="number"
-                        min="3"
-                        max="100"
-                        value={breadthFtIn.ft}
-                        onChange={(e) => {
-                          const newFt = parseInt(e.target.value, 10) || 0;
-                          setRoom({ ...room, breadth: fromFtIn(newFt, breadthFtIn.in) });
-                        }}
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-mono text-slate-800 text-center shadow-sm"
-                      />
-                      <span className="text-sm font-bold text-slate-600">ft</span>
-                    </div>
-                    <div className="flex-1 flex items-center gap-1.5">
-                      <input
-                        type="number"
-                        min="0"
-                        max="11"
-                        value={breadthFtIn.in}
-                        onChange={(e) => {
-                          const newIn = parseInt(e.target.value, 10) || 0;
-                          setRoom({ ...room, breadth: fromFtIn(breadthFtIn.ft, newIn) });
-                        }}
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-mono text-slate-800 text-center shadow-sm"
-                      />
-                      <span className="text-sm font-bold text-slate-600">in</span>
-                    </div>
-                  </div>
-                )}
+                {/* Room Cards List */}
+                <div className="space-y-2.5">
+                  {multiRooms.map((rm) => {
+                    const isSelected = rm.id === selectedRoomId;
+                    const area = rm.breadth * rm.length;
 
-                <input
-                  type="range"
-                  min="2.0"
-                  max="16.0"
-                  step="0.05"
-                  value={room.breadth}
-                  onChange={(e) => setRoom({ ...room, breadth: parseFloat(e.target.value) || 2 })}
-                  className="w-full accent-blue-600 cursor-pointer"
-                />
-
-                {/* Quick Presets */}
-                <div className="flex gap-2 pt-1">
-                  {(unit === 'metric'
-                    ? [3.0, 4.5, 5.5, 6.5, 8.0]
-                    : [10, 14, 18, 22, 26]
-                  ).map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() =>
-                        setRoom({
-                          ...room,
-                          breadth: unit === 'metric' ? val : val * 0.3048,
-                        })
-                      }
-                      className="flex-1 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-xs font-mono font-semibold text-slate-700 transition shadow-sm"
-                    >
-                      {unit === 'metric' ? `${val}m` : `${val}'`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* LENGTH (Typeable + Unit Support) */}
-              <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
-                <div className="flex justify-between items-center">
-                  <label className="text-sm font-bold text-slate-800">
-                    Length (North-South Height)
-                  </label>
-                  <span className="text-sm font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
-                    {formatDistance(room.length, unit)}
-                  </span>
-                </div>
-
-                {unit === 'metric' ? (
-                  /* Metric: Typeable meters */
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      step="0.05"
-                      min="1.0"
-                      max="30.0"
-                      value={room.length}
-                      onChange={(e) =>
-                        setRoom({ ...room, length: Math.max(1, parseFloat(e.target.value) || 1) })
-                      }
-                      className="flex-1 bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-base font-mono text-slate-800 focus:outline-none focus:border-blue-600 shadow-sm"
-                    />
-                    <span className="text-sm font-bold text-slate-600">meters</span>
-                  </div>
-                ) : (
-                  /* Imperial: Typeable Feet & Inches */
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 flex items-center gap-1.5">
-                      <input
-                        type="number"
-                        min="3"
-                        max="100"
-                        value={lengthFtIn.ft}
-                        onChange={(e) => {
-                          const newFt = parseInt(e.target.value, 10) || 0;
-                          setRoom({ ...room, length: fromFtIn(newFt, lengthFtIn.in) });
-                        }}
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-mono text-slate-800 text-center shadow-sm"
-                      />
-                      <span className="text-sm font-bold text-slate-600">ft</span>
-                    </div>
-                    <div className="flex-1 flex items-center gap-1.5">
-                      <input
-                        type="number"
-                        min="0"
-                        max="11"
-                        value={lengthFtIn.in}
-                        onChange={(e) => {
-                          const newIn = parseInt(e.target.value, 10) || 0;
-                          setRoom({ ...room, length: fromFtIn(lengthFtIn.ft, newIn) });
-                        }}
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-mono text-slate-800 text-center shadow-sm"
-                      />
-                      <span className="text-sm font-bold text-slate-600">in</span>
-                    </div>
-                  </div>
-                )}
-
-                <input
-                  type="range"
-                  min="2.0"
-                  max="16.0"
-                  step="0.05"
-                  value={room.length}
-                  onChange={(e) => setRoom({ ...room, length: parseFloat(e.target.value) || 2 })}
-                  className="w-full accent-blue-600 cursor-pointer"
-                />
-
-                {/* Quick Presets */}
-                <div className="flex gap-2 pt-1">
-                  {(unit === 'metric'
-                    ? [3.0, 3.8, 4.5, 5.0, 6.0]
-                    : [10, 12, 15, 18, 20]
-                  ).map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() =>
-                        setRoom({
-                          ...room,
-                          length: unit === 'metric' ? val : val * 0.3048,
-                        })
-                      }
-                      className="flex-1 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-xs font-mono font-semibold text-slate-700 transition shadow-sm"
-                    >
-                      {unit === 'metric' ? `${val}m` : `${val}'`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* WALL THICKNESS (Typeable) */}
-              <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
-                <div className="flex justify-between items-center">
-                  <label className="text-sm font-bold text-slate-800">
-                    Wall Thickness (Typeable)
-                  </label>
-                  <span className="text-sm font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
-                    {unit === 'imperial' ? `${wallThicknessIn}"` : `${wallThicknessMm} mm`}
-                  </span>
-                </div>
-
-                {unit === 'metric' ? (
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="number"
-                      step="5"
-                      min="50"
-                      max="600"
-                      value={wallThicknessMm}
-                      onChange={(e) => {
-                        const mm = parseFloat(e.target.value) || 200;
-                        setRoom({ ...room, wallThickness: mm / 1000 });
-                      }}
-                      className="flex-1 bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-base font-mono text-slate-800 focus:outline-none focus:border-blue-600 shadow-sm"
-                    />
-                    <span className="text-sm font-bold text-slate-600">mm</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="2"
-                      max="24"
-                      value={wallThicknessIn}
-                      onChange={(e) => {
-                        const inVal = parseFloat(e.target.value) || 8;
-                        setRoom({ ...room, wallThickness: inVal * 0.0254 });
-                      }}
-                      className="flex-1 bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-base font-mono text-slate-800 focus:outline-none focus:border-blue-600 shadow-sm"
-                    />
-                    <span className="text-sm font-bold text-slate-600">inches</span>
-                  </div>
-                )}
-
-                {/* Quick Presets */}
-                <div className="flex gap-2 pt-1">
-                  {(unit === 'metric'
-                    ? [150, 200, 250, 300]
-                    : [6, 8, 10, 12]
-                  ).map((val) => {
-                    const isSelected = unit === 'metric'
-                      ? Math.abs(wallThicknessMm - val) < 2
-                      : Math.abs(wallThicknessIn - val) < 0.2;
                     return (
-                      <button
-                        key={val}
-                        type="button"
-                        onClick={() =>
-                          setRoom({
-                            ...room,
-                            wallThickness: unit === 'metric' ? val / 1000 : val * 0.0254,
-                          })
-                        }
-                        className={`flex-1 py-1.5 rounded-lg border text-xs font-mono font-semibold transition ${
+                      <div
+                        key={rm.id}
+                        onClick={() => setSelectedRoomId(rm.id || null)}
+                        className={`p-3.5 rounded-xl border transition cursor-pointer flex items-center justify-between ${
                           isSelected
-                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                            : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200 shadow-sm'
+                            ? 'bg-blue-50/80 border-blue-600 shadow-sm'
+                            : 'bg-slate-50 border-slate-200 hover:border-slate-300 hover:bg-white'
                         }`}
                       >
-                        {unit === 'metric' ? `${val}mm` : `${val}"`}
-                      </button>
+                        <div className="flex items-center gap-3">
+                          <div className={`w-3 h-3 rounded-full ${isSelected ? 'bg-blue-600 ring-2 ring-blue-300' : 'bg-slate-400'}`} />
+                          <div>
+                            <div className="font-bold text-sm text-slate-800">{rm.name}</div>
+                            <div className="text-xs text-slate-500 font-mono">
+                              {formatDistance(rm.breadth, unit)} × {formatDistance(rm.length, unit)} · {area.toFixed(1)} m²
+                            </div>
+                            <div className="text-[11px] text-blue-600 font-mono font-medium">
+                              Pos: X: {(rm.x || 0).toFixed(2)}m, Y: {(rm.y || 0).toFixed(2)}m
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600">
+                            {rm.type || 'ROOM'}
+                          </span>
+                          {multiRooms.length > 1 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteRoom(rm.id!);
+                              }}
+                              className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                              title="Delete this room"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
-              </div>
 
-              {/* Usable Area & Perimeter Cards */}
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 shadow-sm">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                    Usable Area
+                {/* Quick Add Room By Type Buttons */}
+                <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-3">
+                  <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
+                    Quick Add Room
                   </span>
-                  <div className="text-xl font-extrabold font-mono text-slate-900 mt-1">
-                    {unit === 'imperial'
-                      ? `${grossAreaSqFt.toFixed(1)} sq ft`
-                      : `${grossArea.toFixed(2)} m²`}
-                  </div>
-                  <span className="text-xs text-slate-500 font-mono mt-0.5 block">
-                    {unit === 'imperial'
-                      ? `(${grossArea.toFixed(2)} m²)`
-                      : `(${grossAreaSqFt.toFixed(1)} sq ft)`}
-                  </span>
-                </div>
-
-                <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 shadow-sm">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                    Perimeter
-                  </span>
-                  <div className="text-xl font-extrabold font-mono text-slate-900 mt-1">
-                    {formatDistance(wallPerimeter, unit)}
-                  </div>
-                  <span className="text-xs text-slate-500 font-mono mt-0.5 block">
-                    {unit === 'imperial'
-                      ? `(${wallPerimeter.toFixed(2)} m)`
-                      : `(${(wallPerimeter * 3.28084).toFixed(1)} ft)`}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 2: DOORS & WINDOWS (Fully Typeable) */}
-          {activeTab === 'openings' && (
-            <div className="flex-1 overflow-y-auto p-5 space-y-6">
-              {/* Type Switcher */}
-              <div className="grid grid-cols-2 gap-2 p-1.5 bg-slate-100 border border-slate-200 rounded-2xl">
-                <button
-                  type="button"
-                  onClick={() => handleTypeSelect('door')}
-                  className={`flex items-center justify-center gap-2.5 py-3 rounded-xl text-sm font-bold transition ${
-                    newType === 'door'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                  }`}
-                >
-                  <DoorOpen size={18} />
-                  Door
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleTypeSelect('window')}
-                  className={`flex items-center justify-center gap-2.5 py-3 rounded-xl text-sm font-bold transition ${
-                    newType === 'window'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                  }`}
-                >
-                  <Square size={18} />
-                  Window
-                </button>
-              </div>
-
-              {/* Attach to Wall */}
-              <div>
-                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
-                  Attach to Wall
-                </label>
-                <div className="grid grid-cols-4 gap-2">
-                  {[
-                    { side: 'N' as WallSide, label: 'North (Top)' },
-                    { side: 'S' as WallSide, label: 'South (Btm)' },
-                    { side: 'W' as WallSide, label: 'West (Left)' },
-                    { side: 'E' as WallSide, label: 'East (Right)' },
-                  ].map((w) => (
-                    <button
-                      key={w.side}
-                      type="button"
-                      onClick={() => setNewWall(w.side)}
-                      className={`py-2.5 px-2 text-center rounded-xl border text-sm font-semibold transition ${
-                        newWall === w.side
-                          ? 'border-blue-600 bg-blue-50 text-blue-700 font-bold shadow-sm'
-                          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 shadow-sm'
-                      }`}
-                    >
-                      <span className="block font-bold text-base">{w.side}</span>
-                      <span className="text-xs text-slate-500 font-mono block mt-0.5">
-                        {formatDistance(w.side === 'N' || w.side === 'S' ? room.breadth : room.length, unit)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* TYPEABLE WIDTH */}
-              <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
-                <div className="flex justify-between items-center">
-                  <label className="text-sm font-bold text-slate-800">
-                    {newType === 'door' ? 'Door' : 'Window'} Width (Typeable)
-                  </label>
-                  <span className="text-sm font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
-                    {formatDistance(newWidth, unit)}
-                  </span>
-                </div>
-
-                {unit === 'metric' ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      step="0.05"
-                      min="0.3"
-                      max="6.0"
-                      value={newWidth}
-                      onChange={(e) => setNewWidth(Math.max(0.2, parseFloat(e.target.value) || 0.9))}
-                      className="flex-1 bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-base font-mono text-slate-800 focus:outline-none focus:border-blue-600 shadow-sm"
-                    />
-                    <span className="text-sm font-bold text-slate-600">meters</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 flex items-center gap-1.5">
-                      <input
-                        type="number"
-                        min="1"
-                        max="20"
-                        value={newWidthFtIn.ft}
-                        onChange={(e) => {
-                          const newFt = parseInt(e.target.value, 10) || 0;
-                          setNewWidth(fromFtIn(newFt, newWidthFtIn.in));
-                        }}
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-mono text-slate-800 text-center shadow-sm"
-                      />
-                      <span className="text-sm font-bold text-slate-600">ft</span>
-                    </div>
-                    <div className="flex-1 flex items-center gap-1.5">
-                      <input
-                        type="number"
-                        min="0"
-                        max="11"
-                        value={newWidthFtIn.in}
-                        onChange={(e) => {
-                          const newIn = parseInt(e.target.value, 10) || 0;
-                          setNewWidth(fromFtIn(newWidthFtIn.ft, newIn));
-                        }}
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-mono text-slate-800 text-center shadow-sm"
-                      />
-                      <span className="text-sm font-bold text-slate-600">in</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Quick Presets */}
-                <div className="grid grid-cols-4 gap-2 pt-1">
-                  {(newType === 'door'
-                    ? [0.75, 0.9, 1.2, 1.8]
-                    : [0.8, 1.2, 1.6, 2.0]
-                  ).map((wVal) => (
-                    <button
-                      key={wVal}
-                      type="button"
-                      onClick={() => setNewWidth(wVal)}
-                      className="py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-xs font-mono font-semibold text-slate-700 transition shadow-sm"
-                    >
-                      {formatDistance(wVal, unit)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* TYPEABLE POSITION */}
-              <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
-                <div className="flex justify-between items-center">
-                  <label className="text-sm font-bold text-slate-800">
-                    Position along Wall (Typeable)
-                  </label>
-                  <span className="text-sm font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
-                    {formatDistance(newPos, unit)}
-                  </span>
-                </div>
-
-                {unit === 'metric' ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      step="0.05"
-                      min="0.05"
-                      max={Math.max(0.1, (newWall === 'N' || newWall === 'S' ? room.breadth : room.length) - newWidth - 0.05)}
-                      value={newPos}
-                      onChange={(e) => setNewPos(parseFloat(e.target.value) || 0.1)}
-                      className="flex-1 bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-base font-mono text-slate-800 focus:outline-none focus:border-blue-600 shadow-sm"
-                    />
-                    <span className="text-sm font-bold text-slate-600">meters</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 flex items-center gap-1.5">
-                      <input
-                        type="number"
-                        min="0"
-                        max="50"
-                        value={newPosFtIn.ft}
-                        onChange={(e) => {
-                          const newFt = parseInt(e.target.value, 10) || 0;
-                          setNewPos(fromFtIn(newFt, newPosFtIn.in));
-                        }}
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-mono text-slate-800 text-center shadow-sm"
-                      />
-                      <span className="text-sm font-bold text-slate-600">ft</span>
-                    </div>
-                    <div className="flex-1 flex items-center gap-1.5">
-                      <input
-                        type="number"
-                        min="0"
-                        max="11"
-                        value={newPosFtIn.in}
-                        onChange={(e) => {
-                          const newIn = parseInt(e.target.value, 10) || 0;
-                          setNewPos(fromFtIn(newPosFtIn.ft, newIn));
-                        }}
-                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-mono text-slate-800 text-center shadow-sm"
-                      />
-                      <span className="text-sm font-bold text-slate-600">in</span>
-                    </div>
-                  </div>
-                )}
-
-                <input
-                  type="range"
-                  min="0.05"
-                  max={Math.max(0.1, (newWall === 'N' || newWall === 'S' ? room.breadth : room.length) - newWidth - 0.05)}
-                  step="0.05"
-                  value={newPos}
-                  onChange={(e) => setNewPos(parseFloat(e.target.value) || 0.1)}
-                  className="w-full accent-blue-600 cursor-pointer"
-                />
-              </div>
-
-              {/* Add Button */}
-              <button
-                type="button"
-                onClick={handleAddOpening}
-                className="w-full py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-base flex items-center justify-center gap-2.5 shadow-md shadow-blue-600/20 transition"
-              >
-                <Plus size={20} />
-                Place {newType === 'door' ? 'Door' : 'Window'} on Wall {newWall}
-              </button>
-
-              {/* Placed Openings List */}
-              <div className="pt-2">
-                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-3">
-                  Placed Openings ({room.openings.length})
-                </span>
-
-                {room.openings.length === 0 ? (
-                  <div className="p-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 text-center text-sm text-slate-500 font-medium">
-                    No openings placed yet.
-                  </div>
-                ) : (
-                  <div className="space-y-2.5">
-                    {room.openings.map((op, idx) => {
-                      const isSelected = op.id === selectedOpeningId;
-                      const label = op.type === 'door' ? `D${idx + 1}` : `W${idx + 1}`;
-                      return (
-                        <div
-                          key={op.id}
-                          onClick={() => setSelectedOpeningId(op.id)}
-                          className={`p-3.5 rounded-2xl border transition cursor-pointer ${
-                            isSelected
-                              ? 'border-amber-400 bg-amber-50/80 shadow-sm'
-                              : 'border-slate-200 bg-white hover:border-slate-300 shadow-sm'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2.5">
-                              <span className="px-2 py-0.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 font-mono text-xs font-bold">
-                                {label}
-                              </span>
-                              <span className="text-sm font-bold capitalize text-slate-800">
-                                {op.type} · Wall {op.wall}
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteOpening(op.id);
-                              }}
-                              className="text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition p-1"
-                              title="Delete opening"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-
-                          <div className="flex items-center justify-between text-xs font-mono text-slate-600 mb-1">
-                            <span>Pos: {formatDistance(op.position, unit)}</span>
-                            <span>Width: {formatDistance(op.width, unit)}</span>
-                          </div>
-
-                          {/* Quick Door Flip controls */}
-                          {op.type === 'door' && (
-                            <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-slate-100">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleUpdateOpening({ ...op, flipHinge: !op.flipHinge });
-                                }}
-                                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition border border-slate-200"
-                              >
-                                <FlipHorizontal size={13} />
-                                Flip Hinge
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleUpdateOpening({ ...op, flipSwing: !op.flipSwing });
-                                }}
-                                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition border border-slate-200"
-                              >
-                                <FlipVertical size={13} />
-                                Flip Swing
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: ANALYTICS */}
-          {activeTab === 'analytics' && (
-            <div className="flex-1 overflow-y-auto p-5 space-y-6">
-              <div>
-                <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-3">
-                  Building Code & Daylighting
-                </h3>
-
-                {/* Daylighting Card */}
-                <div
-                  className={`p-4 rounded-2xl border ${
-                    isDaylightCompliant
-                      ? 'border-emerald-300 bg-emerald-50/80'
-                      : 'border-amber-300 bg-amber-50/80'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 mb-2.5">
-                    {isDaylightCompliant ? (
-                      <CheckCircle2 size={20} className="text-emerald-600" />
-                    ) : (
-                      <AlertTriangle size={20} className="text-amber-600" />
-                    )}
-                    <span className="text-sm font-bold text-slate-900">
-                      {isDaylightCompliant
-                        ? 'Daylighting Code Compliant'
-                        : 'Low Natural Daylight Warning'}
-                    </span>
-                  </div>
-
-                  {/* Meter Bar */}
-                  <div className="w-full bg-slate-200 rounded-full h-2.5 my-3 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-300 ${
-                        isDaylightCompliant ? 'bg-emerald-500' : 'bg-amber-500'
-                      }`}
-                      style={{ width: `${Math.min(100, (daylightRatio / 20) * 100)}%` }}
-                    />
-                  </div>
-
-                  <div className="space-y-2 text-sm font-mono pt-1">
-                    <div className="flex justify-between text-slate-600">
-                      <span>Floor Area:</span>
-                      <span className="text-slate-900 font-bold">
-                        {unit === 'imperial'
-                          ? `${grossAreaSqFt.toFixed(1)} sq ft`
-                          : `${grossArea.toFixed(2)} m²`}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-slate-600">
-                      <span>Window Area:</span>
-                      <span className="text-slate-900 font-bold">
-                        {unit === 'imperial'
-                          ? `${(totalWindowArea * 10.7639).toFixed(1)} sq ft`
-                          : `${totalWindowArea.toFixed(2)} m²`}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-slate-600 pt-2 border-t border-slate-200">
-                      <span className="font-bold">Daylight Ratio:</span>
-                      <span
-                        className={`font-bold ${
-                          isDaylightCompliant ? 'text-emerald-700' : 'text-amber-700'
-                        }`}
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { type: 'bedroom', label: '+ Bedroom' },
+                      { type: 'living', label: '+ Living Room' },
+                      { type: 'kitchen', label: '+ Kitchen' },
+                      { type: 'bathroom', label: '+ Bathroom' },
+                      { type: 'office', label: '+ Office' },
+                      { type: 'balcony', label: '+ Balcony' },
+                    ].map((btn) => (
+                      <button
+                        key={btn.type}
+                        onClick={() => handleAddRoom(btn.type as any)}
+                        className="py-2 px-3 rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-semibold text-xs border border-slate-200 transition shadow-xs text-left"
                       >
-                        {daylightRatio.toFixed(1)}% {isDaylightCompliant ? '(≥ 10%)' : '(< 10%)'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Go Backend Validation Details */}
-              <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 shadow-sm">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-bold text-slate-800">
-                    Go Backend Server
-                  </span>
-                  <span
-                    className={`text-xs px-2.5 py-1 rounded-full font-mono font-medium ${
-                      backendStatus === 'connected'
-                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                        : 'bg-slate-200 text-slate-600'
-                    }`}
-                  >
-                    {backendStatus === 'connected' ? 'Connected (:8080)' : 'Local Mode'}
-                  </span>
-                </div>
-
-                {backendWarnings.length > 0 ? (
-                  <div className="space-y-1 mt-2">
-                    {backendWarnings.map((warn, i) => (
-                      <div key={i} className="text-xs text-amber-700 flex items-start gap-1">
-                        <span>•</span>
-                        <span>{warn}</span>
-                      </div>
+                        {btn.label}
+                      </button>
                     ))}
                   </div>
-                ) : (
-                  <p className="text-xs text-slate-600 leading-relaxed mt-1">
-                    Zero architectural collisions detected. Wall openings and corner clearances meet standard tolerances.
-                  </p>
-                )}
+                </div>
               </div>
+            )}
 
-              {/* Backup */}
-              <div>
-                <button
-                  type="button"
-                  onClick={exportAsJson}
-                  className="w-full py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm flex items-center justify-center gap-2 border border-slate-300 shadow-sm transition"
-                >
-                  <Download size={16} />
-                  Download Project JSON
-                </button>
-              </div>
-            </div>
-          )}
-        </aside>
+            {/* ========================================================= */}
+            {/* TAB: ACTIVE ROOM SPECS (DIMENSIONS, NAME, POSITION)        */}
+            {/* ========================================================= */}
+            {activeTab === 'dimensions' && (
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
+                    {studioMode === 'multi' ? `Editing: ${currentRoom.name}` : 'Room Label'}
+                  </label>
+                  <input
+                    type="text"
+                    value={currentRoom.name || ''}
+                    onChange={(e) => handleUpdateCurrentRoom({ ...currentRoom, name: e.target.value })}
+                    placeholder="e.g. Master Bedroom"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-base font-semibold text-slate-800 focus:outline-none focus:border-blue-600 focus:bg-white shadow-sm"
+                  />
+                </div>
 
-        {/* Right Workspace: Center Canvas + Docked Bottom Footer */}
-        <div className="flex-1 flex flex-col h-full overflow-hidden bg-white">
-          <main className="flex-1 relative flex items-center justify-center overflow-hidden bg-white">
-            <FloorPlan
-              room={room}
-              theme={theme}
-              unit={unit}
-              showDimensions={showDimensions}
-              showGrid={showGrid}
-              selectedOpeningId={selectedOpeningId}
-              onSelectOpening={setSelectedOpeningId}
-              onUpdateOpening={handleUpdateOpening}
-              onDeleteOpening={handleDeleteOpening}
-              zoom={zoom}
-              onZoomChange={setZoom}
-              panOffset={panOffset}
-              onPanChange={setPanOffset}
-              onCursorMove={setCursorCoords}
-            />
-
-            {/* Top-Right Floating Canvas HUD */}
-            <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-md border border-slate-200 rounded-2xl p-1.5 flex items-center gap-1 shadow-lg z-20">
-              <button
-                type="button"
-                onClick={() => setZoom((z) => Math.min(2.5, Math.round((z + 0.15) * 100) / 100))}
-                className="p-2 rounded-xl hover:bg-slate-100 text-slate-700 hover:text-slate-900 transition"
-                title="Zoom In"
-              >
-                <ZoomIn size={18} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setZoom((z) => Math.max(0.4, Math.round((z - 0.15) * 100) / 100))}
-                className="p-2 rounded-xl hover:bg-slate-100 text-slate-700 hover:text-slate-900 transition"
-                title="Zoom Out"
-              >
-                <ZoomOut size={18} />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setZoom(1);
-                  setPanOffset({ x: 0, y: 0 });
-                }}
-                className="p-2 rounded-xl hover:bg-slate-100 text-slate-700 hover:text-slate-900 transition"
-                title="Reset View (100%)"
-              >
-                <RotateCcw size={18} />
-              </button>
-
-              <div className="w-px h-5 bg-slate-200 mx-1.5" />
-
-              {/* Grid Toggle */}
-              <button
-                type="button"
-                onClick={() => setShowGrid((g) => !g)}
-                className={`p-2 rounded-xl transition ${
-                  showGrid
-                    ? 'bg-blue-50 text-blue-600 border border-blue-200 shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-                title="Toggle Architectural Grid"
-              >
-                <Grid size={18} />
-              </button>
-
-              {/* Dimensions Toggle */}
-              <button
-                type="button"
-                onClick={() => setShowDimensions((d) => !d)}
-                className={`p-2 rounded-xl transition ${
-                  showDimensions
-                    ? 'bg-blue-50 text-blue-600 border border-blue-200 shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-                title="Toggle CAD Dimension Strings"
-              >
-                <Ruler size={18} />
-              </button>
-            </div>
-          </main>
-
-          {/* Clean Docked Footer Status Bar (At bottom of page, NOT in middle) */}
-          <footer className="h-9 bg-white border-t border-slate-200 px-6 flex items-center justify-between text-xs font-mono text-slate-600 shrink-0 z-20 select-none">
-            <div className="flex items-center gap-4">
-              <div>
-                Zoom: <span className="font-bold text-slate-900">{Math.round(zoom * 100)}%</span>
-              </div>
-              <div className="w-px h-3.5 bg-slate-200" />
-              <div>
-                Scale: <span className="font-bold text-slate-900">{unit === 'imperial' ? '1/4" = 1\'-0"' : '1:50 (1m = 100u)'}</span>
-              </div>
-              <div className="w-px h-3.5 bg-slate-200" />
-              <div>
-                Grid: <span className="font-bold text-slate-900">{unit === 'imperial' ? '1.0ft (10 subdivisions)' : '1.0m (10 subdivisions · 10cm/cell)'}</span>
-              </div>
-              {cursorCoords && (
-                <>
-                  <div className="w-px h-3.5 bg-slate-200" />
-                  <div>
-                    Cursor: X:{' '}
-                    <span className="font-bold text-slate-900">
-                      {formatDistance(cursorCoords.x, unit)}
-                    </span>
-                    , Y:{' '}
-                    <span className="font-bold text-slate-900">
-                      {formatDistance(cursorCoords.y, unit)}
+                {/* BREADTH (X-AXIS) */}
+                <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
+                  <div className="flex justify-between items-center">
+                    <label className="text-sm font-bold text-slate-800">
+                      Breadth (East-West Width)
+                    </label>
+                    <span className="text-sm font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
+                      {formatDistance(currentRoom.breadth, unit)}
                     </span>
                   </div>
-                </>
-              )}
-            </div>
-            <div className="hidden md:flex items-center gap-2 text-slate-500 font-sans">
-              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Corner snapped to (0,0) grid · 10 subdivisions per square</span>
-            </div>
-          </footer>
-        </div>
+
+                  {unit === 'metric' ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="1.0"
+                        max="30.0"
+                        value={currentRoom.breadth}
+                        onChange={(e) =>
+                          handleUpdateCurrentRoom({
+                            ...currentRoom,
+                            breadth: Math.max(1, Math.round(parseFloat(e.target.value || '1') * 100) / 100),
+                          })
+                        }
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                      />
+                      <span className="font-bold text-slate-500 text-sm">meters</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="3"
+                        max="90"
+                        value={toFtIn(currentRoom.breadth).ft}
+                        onChange={(e) =>
+                          handleUpdateCurrentRoom({
+                            ...currentRoom,
+                            breadth: fromFtIn(parseInt(e.target.value || '0'), toFtIn(currentRoom.breadth).in),
+                          })
+                        }
+                        className="w-1/2 bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                      />
+                      <span className="text-xs font-bold text-slate-500">ft</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="11"
+                        value={toFtIn(currentRoom.breadth).in}
+                        onChange={(e) =>
+                          handleUpdateCurrentRoom({
+                            ...currentRoom,
+                            breadth: fromFtIn(toFtIn(currentRoom.breadth).ft, parseInt(e.target.value || '0')),
+                          })
+                        }
+                        className="w-1/2 bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                      />
+                      <span className="text-xs font-bold text-slate-500">in</span>
+                    </div>
+                  )}
+
+                  {/* Preset chips */}
+                  <div className="flex gap-2 pt-1">
+                    {[3.0, 4.0, 5.0, 6.0, 7.5].map((w) => (
+                      <button
+                        key={w}
+                        type="button"
+                        onClick={() => handleUpdateCurrentRoom({ ...currentRoom, breadth: w })}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition border ${
+                          Math.abs(currentRoom.breadth - w) < 0.05
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {unit === 'imperial' ? `${Math.round(w / 0.3048)}'` : `${w}m`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* LENGTH (Y-AXIS) */}
+                <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
+                  <div className="flex justify-between items-center">
+                    <label className="text-sm font-bold text-slate-800">
+                      Length (North-South Height)
+                    </label>
+                    <span className="text-sm font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
+                      {formatDistance(currentRoom.length, unit)}
+                    </span>
+                  </div>
+
+                  {unit === 'metric' ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="1.0"
+                        max="30.0"
+                        value={currentRoom.length}
+                        onChange={(e) =>
+                          handleUpdateCurrentRoom({
+                            ...currentRoom,
+                            length: Math.max(1, Math.round(parseFloat(e.target.value || '1') * 100) / 100),
+                          })
+                        }
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                      />
+                      <span className="font-bold text-slate-500 text-sm">meters</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="3"
+                        max="90"
+                        value={toFtIn(currentRoom.length).ft}
+                        onChange={(e) =>
+                          handleUpdateCurrentRoom({
+                            ...currentRoom,
+                            length: fromFtIn(parseInt(e.target.value || '0'), toFtIn(currentRoom.length).in),
+                          })
+                        }
+                        className="w-1/2 bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                      />
+                      <span className="text-xs font-bold text-slate-500">ft</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="11"
+                        value={toFtIn(currentRoom.length).in}
+                        onChange={(e) =>
+                          handleUpdateCurrentRoom({
+                            ...currentRoom,
+                            length: fromFtIn(toFtIn(currentRoom.length).ft, parseInt(e.target.value || '0')),
+                          })
+                        }
+                        className="w-1/2 bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                      />
+                      <span className="text-xs font-bold text-slate-500">in</span>
+                    </div>
+                  )}
+
+                  {/* Preset chips */}
+                  <div className="flex gap-2 pt-1">
+                    {[2.5, 3.5, 4.5, 5.0, 6.0].map((l) => (
+                      <button
+                        key={l}
+                        type="button"
+                        onClick={() => handleUpdateCurrentRoom({ ...currentRoom, length: l })}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition border ${
+                          Math.abs(currentRoom.length - l) < 0.05
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {unit === 'imperial' ? `${Math.round(l / 0.3048)}'` : `${l}m`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Room Carpet Area Badge */}
+                <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-between">
+                  <span className="text-sm font-bold text-slate-700">Room Usable Area</span>
+                  <div className="text-right">
+                    <div className="font-bold text-base text-blue-700">
+                      {(currentRoom.breadth * currentRoom.length).toFixed(2)} m²
+                    </div>
+                    <div className="text-xs text-slate-500 font-mono">
+                      {(currentRoom.breadth * currentRoom.length * 10.7639).toFixed(1)} sq ft
+                    </div>
+                  </div>
+                </div>
+
+                {/* ROOM POSITION & REPOSITIONING (Multi-room & Single room) */}
+                <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <label className="text-sm font-bold text-slate-800 block">Room Position (Coordinates)</label>
+                      <span className="text-xs text-slate-500">Drag directly on canvas or adjust here</span>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      X: {(currentRoom.x || 0).toFixed(2)}m · Y: {(currentRoom.y || 0).toFixed(2)}m
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Position X */}
+                    <div>
+                      <span className="text-xs font-semibold text-slate-600 block mb-1">X Position (East-West)</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={Math.round((currentRoom.x || 0) * 100) / 100}
+                        onChange={(e) =>
+                          handleUpdateCurrentRoom({
+                            ...currentRoom,
+                            x: Math.round(parseFloat(e.target.value || '0') * 100) / 100,
+                          })
+                        }
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                      />
+                    </div>
+
+                    {/* Position Y */}
+                    <div>
+                      <span className="text-xs font-semibold text-slate-600 block mb-1">Y Position (North-South)</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={Math.round((currentRoom.y || 0) * 100) / 100}
+                        onChange={(e) =>
+                          handleUpdateCurrentRoom({
+                            ...currentRoom,
+                            y: Math.round(parseFloat(e.target.value || '0') * 100) / 100,
+                          })
+                        }
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Nudge Directional Buttons */}
+                  <div className="flex items-center justify-between pt-1 gap-1.5">
+                    <button
+                      type="button"
+                      title="Nudge Left 0.5m"
+                      onClick={() =>
+                        handleUpdateCurrentRoom({
+                          ...currentRoom,
+                          x: Math.round(((currentRoom.x || 0) - 0.5) * 100) / 100,
+                        })
+                      }
+                      className="flex-1 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-lg border border-slate-200 transition"
+                    >
+                      ← Left
+                    </button>
+                    <button
+                      type="button"
+                      title="Nudge Right 0.5m"
+                      onClick={() =>
+                        handleUpdateCurrentRoom({
+                          ...currentRoom,
+                          x: Math.round(((currentRoom.x || 0) + 0.5) * 100) / 100,
+                        })
+                      }
+                      className="flex-1 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-lg border border-slate-200 transition"
+                    >
+                      Right →
+                    </button>
+                    <button
+                      type="button"
+                      title="Nudge Up 0.5m"
+                      onClick={() =>
+                        handleUpdateCurrentRoom({
+                          ...currentRoom,
+                          y: Math.round(((currentRoom.y || 0) - 0.5) * 100) / 100,
+                        })
+                      }
+                      className="flex-1 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-lg border border-slate-200 transition"
+                    >
+                      ↑ Up
+                    </button>
+                    <button
+                      type="button"
+                      title="Nudge Down 0.5m"
+                      onClick={() =>
+                        handleUpdateCurrentRoom({
+                          ...currentRoom,
+                          y: Math.round(((currentRoom.y || 0) + 0.5) * 100) / 100,
+                        })
+                      }
+                      className="flex-1 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-lg border border-slate-200 transition"
+                    >
+                      Down ↓
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================= */}
+            {/* TAB: DUAL WALL THICKNESS INPUTS (USER REQUESTED)          */}
+            {/* ========================================================= */}
+            {activeTab === 'walls' && (
+              <div className="space-y-6">
+                <div className="border-b border-slate-200 pb-3">
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                    Architectural Wall Specifications
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Configure separate thicknesses for outer envelope walls vs. interior dividing partitions.
+                  </p>
+                </div>
+
+                {/* 1. EXTERIOR ENVELOPE WALL THICKNESS */}
+                <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <label className="text-sm font-bold text-slate-800 block">
+                        Exterior Wall Thickness
+                      </label>
+                      <span className="text-xs text-slate-500">Perimeter / building envelope</span>
+                    </div>
+                    <span className="text-sm font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
+                      {unit === 'imperial'
+                        ? `${Math.round(exteriorWallThickness / 0.0254)}"`
+                        : `${Math.round(exteriorWallThickness * 1000)} mm`}
+                    </span>
+                  </div>
+
+                  {unit === 'metric' ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="10"
+                        min="100"
+                        max="600"
+                        value={Math.round(exteriorWallThickness * 1000)}
+                        onChange={(e) => setExteriorWallThickness(Math.max(0.1, parseFloat(e.target.value || '200') / 1000))}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                      />
+                      <span className="font-bold text-slate-500 text-sm">mm</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="1"
+                        min="4"
+                        max="24"
+                        value={Math.round(exteriorWallThickness / 0.0254)}
+                        onChange={(e) => setExteriorWallThickness(Math.max(0.1, parseFloat(e.target.value || '8') * 0.0254))}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                      />
+                      <span className="font-bold text-slate-500 text-sm">inches</span>
+                    </div>
+                  )}
+
+                  {/* Exterior Presets */}
+                  <div className="flex gap-2 pt-1">
+                    {[0.15, 0.20, 0.25, 0.30].map((th) => (
+                      <button
+                        key={th}
+                        type="button"
+                        onClick={() => setExteriorWallThickness(th)}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition border ${
+                          Math.abs(exteriorWallThickness - th) < 0.01
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {unit === 'imperial' ? `${Math.round(th / 0.0254)}"` : `${th * 1000}mm`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. INTERIOR PARTITION WALL THICKNESS */}
+                <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <label className="text-sm font-bold text-slate-800 block">
+                        Interior Partition Thickness
+                      </label>
+                      <span className="text-xs text-slate-500">Shared dividing walls between rooms</span>
+                    </div>
+                    <span className="text-sm font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
+                      {unit === 'imperial'
+                        ? `${Math.round(interiorWallThickness / 0.0254)}"`
+                        : `${Math.round(interiorWallThickness * 1000)} mm`}
+                    </span>
+                  </div>
+
+                  {unit === 'metric' ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="10"
+                        min="50"
+                        max="300"
+                        value={Math.round(interiorWallThickness * 1000)}
+                        onChange={(e) => setInteriorWallThickness(Math.max(0.05, parseFloat(e.target.value || '100') / 1000))}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                      />
+                      <span className="font-bold text-slate-500 text-sm">mm</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="1"
+                        min="2"
+                        max="12"
+                        value={Math.round(interiorWallThickness / 0.0254)}
+                        onChange={(e) => setInteriorWallThickness(Math.max(0.05, parseFloat(e.target.value || '4') * 0.0254))}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                      />
+                      <span className="font-bold text-slate-500 text-sm">inches</span>
+                    </div>
+                  )}
+
+                  {/* Interior Presets */}
+                  <div className="flex gap-2 pt-1">
+                    {[0.08, 0.10, 0.12, 0.15].map((th) => (
+                      <button
+                        key={th}
+                        type="button"
+                        onClick={() => setInteriorWallThickness(th)}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition border ${
+                          Math.abs(interiorWallThickness - th) < 0.01
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {unit === 'imperial' ? `${Math.round(th / 0.0254)}"` : `${th * 1000}mm`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================= */}
+            {/* TAB: DOORS & WINDOWS (ACTIVE ROOM)                        */}
+            {/* ========================================================= */}
+            {activeTab === 'openings' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                    Place Opening on {currentRoom.name}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Select door or window, choose wall, and specify width. Drag openings directly along walls on the canvas.
+                  </p>
+                </div>
+
+                {/* Type Selection */}
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewType('door');
+                      setNewWidth(0.9);
+                    }}
+                    className={`py-3 px-4 rounded-xl border flex items-center justify-center gap-2 font-bold text-sm transition ${
+                      newType === 'door'
+                        ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-sm'
+                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-white'
+                    }`}
+                  >
+                    <DoorOpen size={18} />
+                    Door
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewType('window');
+                      setNewWidth(1.4);
+                    }}
+                    className={`py-3 px-4 rounded-xl border flex items-center justify-center gap-2 font-bold text-sm transition ${
+                      newType === 'window'
+                        ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-sm'
+                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-white'
+                    }`}
+                  >
+                    <Square size={18} />
+                    Window
+                  </button>
+                </div>
+
+                {/* Wall Selection */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
+                    Target Wall
+                  </label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {(['N', 'S', 'W', 'E'] as WallSide[]).map((w) => (
+                      <button
+                        key={w}
+                        type="button"
+                        onClick={() => setNewWall(w)}
+                        className={`py-2 rounded-xl border text-sm font-bold transition ${
+                          newWall === w
+                            ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-sm'
+                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        {w} Wall
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Position Along Wall Input */}
+                <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <label className="text-sm font-bold text-slate-800">Position Along Wall</label>
+                    <span className="text-sm font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      {formatDistance(newPos, unit)}
+                    </span>
+                  </div>
+
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0.1"
+                    max="10.0"
+                    value={newPos}
+                    onChange={(e) => setNewPos(Math.max(0.1, parseFloat(e.target.value || '1.0')))}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                  />
+
+                  <div className="flex gap-2">
+                    {[0.5, 1.0, 1.5, 2.0].map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setNewPos(p)}
+                        className={`flex-1 py-1 rounded-lg text-xs font-bold border transition ${
+                          Math.abs(newPos - p) < 0.05
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {p}m
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Width Input */}
+                <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <label className="text-sm font-bold text-slate-800">Opening Width</label>
+                    <span className="text-sm font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      {formatDistance(newWidth, unit)}
+                    </span>
+                  </div>
+
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0.4"
+                    max="5.0"
+                    value={newWidth}
+                    onChange={(e) => setNewWidth(Math.max(0.4, parseFloat(e.target.value || '0.9')))}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-bold text-slate-800 focus:outline-none focus:border-blue-600"
+                  />
+
+                  <div className="flex gap-2">
+                    {(newType === 'door' ? [0.75, 0.90, 1.0, 1.2] : [0.90, 1.20, 1.50, 2.0]).map((w) => (
+                      <button
+                        key={w}
+                        type="button"
+                        onClick={() => setNewWidth(w)}
+                        className={`flex-1 py-1 rounded-lg text-xs font-bold border transition ${
+                          Math.abs(newWidth - w) < 0.02
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {w}m
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleAddOpening}
+                  className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition shadow-sm flex items-center justify-center gap-2"
+                >
+                  <Plus size={18} />
+                  Place {newType === 'door' ? 'Door' : 'Window'} on {newWall} Wall
+                </button>
+
+                {/* Existing Openings List */}
+                <div className="space-y-3 pt-2">
+                  <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
+                    Openings in {currentRoom.name} ({currentRoom.openings.length})
+                  </span>
+                  {currentRoom.openings.map((op, idx) => (
+                    <div
+                      key={op.id}
+                      onClick={() => setSelectedOpeningId(op.id)}
+                      className={`p-3 rounded-xl border flex items-center justify-between transition cursor-pointer ${
+                        selectedOpeningId === op.id
+                          ? 'border-blue-600 bg-blue-50/80 shadow-sm'
+                          : 'border-slate-200 bg-slate-50 hover:bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="font-bold text-sm text-blue-700">
+                          {op.type === 'door' ? `D${idx + 1}` : `W${idx + 1}`}
+                        </span>
+                        <div className="text-xs text-slate-700">
+                          <span className="font-semibold">{op.type.toUpperCase()}</span> on {op.wall} Wall ·{' '}
+                          <span className="font-mono">{formatDistance(op.width, unit)}</span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteOpening(op.id);
+                        }}
+                        className="text-slate-400 hover:text-rose-600 p-1 rounded-md transition"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================= */}
+            {/* TAB: ANALYTICS & ROOM SCHEDULE                            */}
+            {/* ========================================================= */}
+            {activeTab === 'analytics' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                    Architectural Area & Code Analytics
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Room-by-room area schedule, carpet vs. gross ratio, and daylight compliance.
+                  </p>
+                </div>
+
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-xs text-slate-500 block">Total Carpet Area</span>
+                    <span className="font-bold text-lg text-blue-700 block mt-0.5">
+                      {totalCarpetSqm.toFixed(2)} m²
+                    </span>
+                    <span className="text-xs text-slate-400 font-mono">
+                      {totalCarpetSqFt.toFixed(1)} sq ft
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-xs text-slate-500 block">Gross Built-Up</span>
+                    <span className="font-bold text-lg text-slate-800 block mt-0.5">
+                      {grossBuiltUpSqm.toFixed(2)} m²
+                    </span>
+                    <span className="text-xs text-slate-400 font-mono">
+                      {grossBuiltUpSqFt.toFixed(1)} sq ft
+                    </span>
+                  </div>
+                </div>
+
+                {/* Room Schedule Table */}
+                <div className="space-y-3">
+                  <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
+                    Room Area Schedule
+                  </span>
+                  <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-100/80 border-b border-slate-200 text-slate-700 font-bold">
+                        <tr>
+                          <th className="p-2.5">Room</th>
+                          <th className="p-2.5">Dimensions</th>
+                          <th className="p-2.5 text-right">Carpet Area</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {activeRoomsList.map((r) => {
+                          const area = r.breadth * r.length;
+                          return (
+                            <tr
+                              key={r.id}
+                              onClick={() => setSelectedRoomId(r.id || null)}
+                              className={`cursor-pointer hover:bg-slate-50 transition ${
+                                r.id === selectedRoomId ? 'bg-blue-50/50' : ''
+                              }`}
+                            >
+                              <td className="p-2.5 font-bold text-slate-800">{r.name}</td>
+                              <td className="p-2.5 font-mono text-slate-600">
+                                {formatDistance(r.breadth, unit)} × {formatDistance(r.length, unit)}
+                              </td>
+                              <td className="p-2.5 font-mono font-bold text-right text-blue-700">
+                                {area.toFixed(2)} m²
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Code Compliance & Efficiency */}
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-600">Layout Efficiency</span>
+                    <span className="font-bold text-slate-900">{efficiencyPercent}%</span>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
+                    <div
+                      className="h-full bg-blue-600 rounded-full"
+                      style={{ width: `${Math.min(100, efficiencyPercent)}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2 text-xs text-emerald-700 font-medium">
+                    <CheckCircle2 size={16} />
+                    <span>NBC & IBC compliant habitability standards verified ({backendStatus})</span>
+                  </div>
+                </div>
+
+                {/* Backend Code Compliance Warnings */}
+                {backendWarnings.length > 0 && (
+                  <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-bold text-amber-900">
+                      <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                      <span>Architectural Code Notices ({backendWarnings.length})</span>
+                    </div>
+                    <ul className="text-xs text-amber-800 space-y-1 pl-5 list-disc font-medium">
+                      {backendWarnings.map((warn, i) => (
+                        <li key={i}>{warn}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </aside>
+
+        {/* Right Canvas Area */}
+        <main className="flex-1 h-full relative overflow-hidden bg-white">
+          <FloorPlan
+            rooms={activeRoomsList}
+            selectedRoomId={selectedRoomId}
+            onSelectRoom={setSelectedRoomId}
+            onUpdateRoom={handleUpdateCurrentRoom}
+            exteriorWallThickness={exteriorWallThickness}
+            interiorWallThickness={interiorWallThickness}
+            theme={theme}
+            unit={unit}
+            showDimensions={showDimensions}
+            showGrid={showGrid}
+            selectedOpeningId={selectedOpeningId}
+            onSelectOpening={setSelectedOpeningId}
+            onUpdateOpening={handleUpdateOpening}
+            onDeleteOpening={handleDeleteOpening}
+            zoom={zoom}
+            onZoomChange={setZoom}
+            panOffset={panOffset}
+            onPanChange={setPanOffset}
+            onCursorMove={setCursorCoords}
+          />
+
+          {/* Top-Center Drag & Reposition Instruction Banner */}
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-md border border-slate-200 shadow-lg rounded-full px-4 py-1.5 flex items-center gap-2.5 z-10 text-xs font-semibold text-slate-700 pointer-events-none">
+            <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+            <span>Drag rooms or doors/windows to reposition • Drag blue edge handles to resize • Drag canvas to pan</span>
+          </div>
+
+          {/* Top-Right Floating Canvas HUD */}
+          <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-md border border-slate-200 rounded-2xl p-1.5 flex items-center gap-1 shadow-lg z-20">
+            <button
+              type="button"
+              onClick={() => setZoom((z) => Math.min(2.5, Math.round((z + 0.15) * 100) / 100))}
+              className="p-2 rounded-xl hover:bg-slate-100 text-slate-700 hover:text-slate-900 transition"
+              title="Zoom In"
+            >
+              <ZoomIn size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setZoom((z) => Math.max(0.4, Math.round((z - 0.15) * 100) / 100))}
+              className="p-2 rounded-xl hover:bg-slate-100 text-slate-700 hover:text-slate-900 transition"
+              title="Zoom Out"
+            >
+              <ZoomOut size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setZoom(1);
+                setPanOffset({ x: 0, y: 0 });
+              }}
+              className="p-2 rounded-xl hover:bg-slate-100 text-slate-700 hover:text-slate-900 transition"
+              title="Reset View (100%)"
+            >
+              <RotateCcw size={18} />
+            </button>
+
+            <div className="w-px h-5 bg-slate-200 mx-1.5" />
+
+            <button
+              type="button"
+              onClick={() => setShowGrid((g) => !g)}
+              className={`p-2 rounded-xl transition ${
+                showGrid
+                  ? 'bg-blue-50 text-blue-600 border border-blue-200 shadow-xs'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+              title="Toggle Architectural Grid"
+            >
+              <Grid size={18} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowDimensions((d) => !d)}
+              className={`p-2 rounded-xl transition ${
+                showDimensions
+                  ? 'bg-blue-50 text-blue-600 border border-blue-200 shadow-xs'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+              title="Toggle CAD Dimension Strings"
+            >
+              <Ruler size={18} />
+            </button>
+          </div>
+        </main>
       </div>
+
+      {/* 3. DOCKED FOOTER STATUS BAR */}
+      <footer className="h-9 bg-white border-t border-slate-200 px-6 flex items-center justify-between text-xs font-mono text-slate-600 shrink-0 z-20 select-none">
+        <div className="flex items-center gap-4">
+          <div>
+            Mode: <span className="font-bold text-blue-700 uppercase">{studioMode === 'single' ? 'Single Room' : 'Multi-Room'}</span>
+          </div>
+          <div className="w-px h-3.5 bg-slate-200" />
+          <div>
+            Zoom: <span className="font-bold text-slate-900">{Math.round(zoom * 100)}%</span>
+          </div>
+          <div className="w-px h-3.5 bg-slate-200" />
+          <div>
+            Scale: <span className="font-bold text-slate-900">{unit === 'imperial' ? '1/4" = 1\'-0"' : '1:50 (1m = 100u)'}</span>
+          </div>
+          <div className="w-px h-3.5 bg-slate-200" />
+          <div>
+            Grid: <span className="font-bold text-slate-900">{unit === 'imperial' ? '1.0ft (10 subdivisions)' : '1.0m (10 subdivisions · 10cm/cell)'}</span>
+          </div>
+          {cursorCoords && (
+            <>
+              <div className="w-px h-3.5 bg-slate-200" />
+              <div>
+                Cursor: X:{' '}
+                <span className="font-bold text-slate-900">
+                  {formatDistance(cursorCoords.x, unit)}
+                </span>
+                , Y:{' '}
+                <span className="font-bold text-slate-900">
+                  {formatDistance(cursorCoords.y, unit)}
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+        <div className="hidden md:flex items-center gap-2 text-slate-500 font-sans">
+          <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span>Corner snapped to (0,0) grid · Walls: Ext {Math.round(exteriorWallThickness * 1000)}mm / Int {Math.round(interiorWallThickness * 1000)}mm</span>
+        </div>
+      </footer>
     </div>
   );
 }

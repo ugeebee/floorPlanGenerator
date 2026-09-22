@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo, useCallback } from 'react';
+import React, { useRef, useState, useMemo, useCallback, useEffect } from 'react';
 import { FlipHorizontal, FlipVertical, Trash2 } from './icons';
 
 export type WallSide = 'N' | 'S' | 'E' | 'W';
@@ -13,11 +13,26 @@ export type Opening = {
   flipSwing?: boolean; // false: swing inward, true: swing outward
 };
 
+export type RoomType =
+  | 'living'
+  | 'bedroom'
+  | 'kitchen'
+  | 'bathroom'
+  | 'dining'
+  | 'balcony'
+  | 'corridor'
+  | 'office'
+  | 'custom';
+
 export type RoomConfig = {
-  length: number;       // Y-axis (North-South) in meters
-  breadth: number;      // X-axis (East-West) in meters
-  wallThickness?: number; // Wall thickness in meters (default 0.2m)
+  id?: string;
   name?: string;
+  type?: RoomType;
+  x?: number; // meters from plan origin (East-West)
+  y?: number; // meters from plan origin (North-South)
+  breadth: number; // X-axis dimension (m)
+  length: number;  // Y-axis dimension (m)
+  wallThickness?: number; // individual room wall thickness override
   openings: Opening[];
 };
 
@@ -25,7 +40,14 @@ export type FloorPlanTheme = 'blueprint' | 'cad-light' | 'dark-studio';
 export type UnitSystem = 'metric' | 'imperial';
 
 interface FloorPlanProps {
-  room: RoomConfig;
+  room?: RoomConfig;
+  rooms?: RoomConfig[];
+  exteriorWallThickness?: number;
+  interiorWallThickness?: number;
+  selectedRoomId?: string | null;
+  onSelectRoom?: (id: string | null) => void;
+  onUpdateRoom?: (room: RoomConfig) => void;
+  onDeleteRoom?: (id: string) => void;
   theme?: FloorPlanTheme;
   unit?: UnitSystem;
   showDimensions?: boolean;
@@ -120,8 +142,117 @@ export const BASE_PPM = 100;
 export const SHEET_MARGIN_METERS = 2.0;
 export const SHEET_MARGIN_PX = SHEET_MARGIN_METERS * BASE_PPM; // Exactly 200 SVG units
 
+// Smart magnetic & grid snapping calculation for room dragging
+function computeSnappedRoomPosition(
+  rawX: number,
+  rawY: number,
+  currentRoom: RoomConfig,
+  otherRooms: RoomConfig[],
+  unit: UnitSystem
+) {
+  const rw = currentRoom.breadth;
+  const rh = currentRoom.length;
+  const SNAP_DIST = 0.25; // 25cm magnetic snap distance
+
+  let snappedX = rawX;
+  let snappedY = rawY;
+  let guideX: number | null = null;
+  let guideY: number | null = null;
+
+  let bestDistX = SNAP_DIST;
+  let bestDistY = SNAP_DIST;
+
+  // 1. Magnetic edge & corner snapping to adjoining rooms
+  for (const other of otherRooms) {
+    const ox = other.x || 0;
+    const oy = other.y || 0;
+    const ow = other.breadth;
+    const oh = other.length;
+
+    // Proximity on Y axis
+    const yOverlap = rawY + rh >= oy - 0.5 && rawY <= oy + oh + 0.5;
+    if (yOverlap) {
+      if (Math.abs(rawX - (ox + ow)) < bestDistX) {
+        bestDistX = Math.abs(rawX - (ox + ow));
+        snappedX = ox + ow;
+        guideX = ox + ow;
+      }
+      if (Math.abs(rawX + rw - ox) < bestDistX) {
+        bestDistX = Math.abs(rawX + rw - ox);
+        snappedX = ox - rw;
+        guideX = ox;
+      }
+      if (Math.abs(rawX - ox) < bestDistX) {
+        bestDistX = Math.abs(rawX - ox);
+        snappedX = ox;
+        guideX = ox;
+      }
+      if (Math.abs(rawX + rw - (ox + ow)) < bestDistX) {
+        bestDistX = Math.abs(rawX + rw - (ox + ow));
+        snappedX = ox + ow - rw;
+        guideX = ox + ow;
+      }
+    }
+
+    // Proximity on X axis
+    const xOverlap = rawX + rw >= ox - 0.5 && rawX <= ox + ow + 0.5;
+    if (xOverlap) {
+      if (Math.abs(rawY - (oy + oh)) < bestDistY) {
+        bestDistY = Math.abs(rawY - (oy + oh));
+        snappedY = oy + oh;
+        guideY = oy + oh;
+      }
+      if (Math.abs(rawY + rh - oy) < bestDistY) {
+        bestDistY = Math.abs(rawY + rh - oy);
+        snappedY = oy - rh;
+        guideY = oy;
+      }
+      if (Math.abs(rawY - oy) < bestDistY) {
+        bestDistY = Math.abs(rawY - oy);
+        snappedY = oy;
+        guideY = oy;
+      }
+      if (Math.abs(rawY + rh - (oy + oh)) < bestDistY) {
+        bestDistY = Math.abs(rawY + rh - (oy + oh));
+        snappedY = oy + oh - rh;
+        guideY = oy + oh;
+      }
+    }
+  }
+
+  // 2. If not magnetically snapped, snap to grid
+  if (guideX === null) {
+    if (unit === 'imperial') {
+      snappedX = Math.round(rawX / 0.1524) * 0.1524; // 6 inches
+    } else {
+      snappedX = Math.round(rawX * 10) / 10; // 10 cm (0.1m)
+    }
+  }
+
+  if (guideY === null) {
+    if (unit === 'imperial') {
+      snappedY = Math.round(rawY / 0.1524) * 0.1524; // 6 inches
+    } else {
+      snappedY = Math.round(rawY * 10) / 10; // 10 cm (0.1m)
+    }
+  }
+
+  return {
+    x: Math.round(snappedX * 100) / 100,
+    y: Math.round(snappedY * 100) / 100,
+    guideX,
+    guideY,
+  };
+}
+
 const FloorPlan: React.FC<FloorPlanProps> = ({
   room,
+  rooms,
+  exteriorWallThickness = 0.20,
+  interiorWallThickness = 0.10,
+  selectedRoomId = null,
+  onSelectRoom,
+  onUpdateRoom,
   theme = 'cad-light',
   unit = 'metric',
   showDimensions = true,
@@ -139,25 +270,124 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
   const svgRef = useRef<SVGSVGElement>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
-  const [draggingOpeningId, setDraggingOpeningId] = useState<string | null>(null);
+  const [draggingOpeningInfo, setDraggingOpeningInfo] = useState<{ roomId: string; openingId: string } | null>(null);
   const [dragOffset, setDragOffset] = useState<number>(0);
 
+  // Dragging Room State (Reposition rooms)
+  const [draggingRoomInfo, setDraggingRoomInfo] = useState<{
+    roomId: string;
+    startClient: { x: number; y: number };
+    startPos: { x: number; y: number };
+  } | null>(null);
+
+  // Resizing Room State (Dragging wall/corner handles)
+  const [resizingRoomInfo, setResizingRoomInfo] = useState<{
+    roomId: string;
+    handle: 'right' | 'bottom' | 'corner';
+    startClient: { x: number; y: number };
+    startDim: { breadth: number; length: number };
+  } | null>(null);
+
+  // Magnetic Alignment Guide Lines
+  const [alignmentGuides, setAlignmentGuides] = useState<{ x: number | null; y: number | null }>({
+    x: null,
+    y: null,
+  });
+
+  const [hoveredRoomId, setHoveredRoomId] = useState<string | null>(null);
+
+  // Global window pointerup to safely release any drag outside the canvas
+  useEffect(() => {
+    const handleGlobalPointerUp = () => {
+      setIsPanning(false);
+      setDraggingOpeningInfo(null);
+      setDraggingRoomInfo(null);
+      setResizingRoomInfo(null);
+      setAlignmentGuides({ x: null, y: null });
+    };
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+    return () => window.removeEventListener('pointerup', handleGlobalPointerUp);
+  }, []);
+
   const colors = THEME_CONFIGS[theme] || THEME_CONFIGS.blueprint;
-  const wallT = room.wallThickness || 0.2; // Wall thickness in meters
-  const breadth = Math.max(1, room.breadth || 5);
-  const length = Math.max(1, room.length || 5);
+  const extWallT = exteriorWallThickness || 0.20;
+  const intWallT = interiorWallThickness || 0.10;
 
-  // Drawing Sheet Margins: 2.0 meters (200 units) on all sides
-  // 200 is an exact integer multiple of 100 (major), 50 (medium), and 10 (minor)
-  const marginPx = SHEET_MARGIN_PX; // Exactly 200 SVG units
+  // Normalize multi-room vs single-room input
+  const allRooms: RoomConfig[] = useMemo(() => {
+    if (rooms && rooms.length > 0) {
+      return rooms.map((r, i) => ({
+        ...r,
+        id: r.id || `room-${i}`,
+        x: r.x || 0,
+        y: r.y || 0,
+        breadth: Math.max(1, r.breadth || 4),
+        length: Math.max(1, r.length || 3),
+        openings: r.openings || [],
+      }));
+    }
+    if (room) {
+      return [{
+        ...room,
+        id: room.id || 'single-room',
+        x: 0,
+        y: 0,
+        breadth: Math.max(1, room.breadth || 5),
+        length: Math.max(1, room.length || 4),
+        openings: room.openings || [],
+      }];
+    }
+    return [{
+      id: 'default-room',
+      name: 'Main Room',
+      type: 'living',
+      x: 0,
+      y: 0,
+      breadth: 5,
+      length: 4,
+      openings: [],
+    }];
+  }, [rooms, room]);
 
-  // North-West interior corner (0,0) of the room in SVG world coordinates
-  const originX = marginPx; // 200
-  const originY = marginPx; // 200
+  // Active selected room
+  const activeRoomId = selectedRoomId || allRooms[0]?.id || null;
+
+  // Overall Plan Bounding Box (in meters)
+  const bounds = useMemo(() => {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    allRooms.forEach((r) => {
+      const rx = r.x || 0;
+      const ry = r.y || 0;
+      if (rx < minX) minX = rx;
+      if (ry < minY) minY = ry;
+      if (rx + r.breadth > maxX) maxX = rx + r.breadth;
+      if (ry + r.length > maxY) maxY = ry + r.length;
+    });
+
+    if (!isFinite(minX)) {
+      minX = 0;
+      minY = 0;
+      maxX = 5;
+      maxY = 4;
+    }
+
+    const width = maxX - minX;
+    const height = maxY - minY;
+
+    return { minX, minY, maxX, maxY, width, height };
+  }, [allRooms]);
+
+  // Drawing Sheet Origin: Bounding origin (bounds.minX, bounds.minY) is locked to (SHEET_MARGIN_PX, SHEET_MARGIN_PX)
+  const originX = SHEET_MARGIN_PX - bounds.minX * BASE_PPM;
+  const originY = SHEET_MARGIN_PX - bounds.minY * BASE_PPM;
 
   // Total base sheet dimensions
-  const baseWidth = breadth * BASE_PPM + marginPx * 2;
-  const baseHeight = length * BASE_PPM + marginPx * 2;
+  const baseWidth = bounds.width * BASE_PPM + SHEET_MARGIN_PX * 2;
+  const baseHeight = bounds.height * BASE_PPM + SHEET_MARGIN_PX * 2;
 
   // ViewBox Camera Mathematics (Mathematically accurate zoom & pan)
   const currentZoom = Math.max(0.2, zoom || 1);
@@ -169,7 +399,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
   const viewBoxY = centerY - viewHeight / 2 - (panOffset?.y || 0);
   const viewBox = `${viewBoxX} ${viewBoxY} ${viewWidth} ${viewHeight}`;
 
-  // Convert room metric coordinates (x: 0..breadth, y: 0..length) to canvas SVG coordinates
+  // Convert metric coordinates to SVG sheet coordinates
   const toScreenX = useCallback((xm: number) => originX + xm * BASE_PPM, [originX]);
   const toScreenY = useCallback((ym: number) => originY + ym * BASE_PPM, [originY]);
 
@@ -186,61 +416,77 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
     const xm = (svgPt.x - originX) / BASE_PPM;
     const ym = (svgPt.y - originY) / BASE_PPM;
     return { x: xm, y: ym };
-  }, [originX]);
+  }, [originX, originY]);
 
-  // Wall length helper
-  const getWallLength = useCallback((wall: WallSide) => {
-    return wall === 'N' || wall === 'S' ? breadth : length;
-  }, [breadth, length]);
+  // Identify shared partition walls between adjoining rooms
+  // Returns a map of shared horizontal and vertical partition lines
+  const sharedPartitions = useMemo(() => {
+    const horizontal: Array<{ y: number; startX: number; endX: number; room1Id: string; room2Id: string }> = [];
+    const vertical: Array<{ x: number; startY: number; endY: number; room1Id: string; room2Id: string }> = [];
 
-  // Sort and group openings by wall
-  const openingsByWall = useMemo(() => {
-    const grouped: Record<WallSide, Opening[]> = { N: [], S: [], E: [], W: [] };
-    room.openings.forEach((op) => {
-      if (grouped[op.wall]) {
-        grouped[op.wall].push(op);
-      }
-    });
-    // Sort ascending by position
-    Object.keys(grouped).forEach((key) => {
-      grouped[key as WallSide].sort((a, b) => a.position - b.position);
-    });
-    return grouped;
-  }, [room.openings]);
+    for (let i = 0; i < allRooms.length; i++) {
+      const r1 = allRooms[i];
+      const r1X = r1.x || 0;
+      const r1Y = r1.y || 0;
 
-  // Calculate solid wall segments for each wall (cutting out door/window openings)
-  const wallSegments = useMemo(() => {
-    const segments: Record<WallSide, Array<{ start: number; end: number }>> = {
-      N: [],
-      S: [],
-      E: [],
-      W: [],
-    };
+      for (let j = i + 1; j < allRooms.length; j++) {
+        const r2 = allRooms[j];
+        const r2X = r2.x || 0;
+        const r2Y = r2.y || 0;
 
-    (['N', 'S', 'E', 'W'] as WallSide[]).forEach((wall) => {
-      const maxLen = getWallLength(wall);
-      const ops = openingsByWall[wall];
-      let current = 0;
-
-      ops.forEach((op) => {
-        const opStart = Math.max(0, Math.min(maxLen, op.position));
-        const opEnd = Math.max(0, Math.min(maxLen, op.position + op.width));
-
-        if (opStart > current) {
-          segments[wall].push({ start: current, end: opStart });
+        // Check vertical adjacency (r1 East == r2 West or r2 East == r1 West)
+        if (Math.abs(r1X + r1.breadth - r2X) < 0.04) {
+          const startY = Math.max(r1Y, r2Y);
+          const endY = Math.min(r1Y + r1.length, r2Y + r2.length);
+          if (endY - startY > 0.05) {
+            vertical.push({ x: r2X, startY, endY, room1Id: r1.id!, room2Id: r2.id! });
+          }
+        } else if (Math.abs(r2X + r2.breadth - r1X) < 0.04) {
+          const startY = Math.max(r1Y, r2Y);
+          const endY = Math.min(r1Y + r1.length, r2Y + r2.length);
+          if (endY - startY > 0.05) {
+            vertical.push({ x: r1X, startY, endY, room1Id: r2.id!, room2Id: r1.id! });
+          }
         }
-        current = Math.max(current, opEnd);
-      });
 
-      if (current < maxLen) {
-        segments[wall].push({ start: current, end: maxLen });
+        // Check horizontal adjacency (r1 South == r2 North or r2 South == r1 North)
+        if (Math.abs(r1Y + r1.length - r2Y) < 0.04) {
+          const startX = Math.max(r1X, r2X);
+          const endX = Math.min(r1X + r1.breadth, r2X + r2.breadth);
+          if (endX - startX > 0.05) {
+            horizontal.push({ y: r2Y, startX, endX, room1Id: r1.id!, room2Id: r2.id! });
+          }
+        } else if (Math.abs(r2Y + r2.length - r1Y) < 0.04) {
+          const startX = Math.max(r1X, r2X);
+          const endX = Math.min(r1X + r1.breadth, r2X + r2.breadth);
+          if (endX - startX > 0.05) {
+            horizontal.push({ y: r1Y, startX, endX, room1Id: r2.id!, room2Id: r1.id! });
+          }
+        }
       }
-    });
+    }
 
-    return segments;
-  }, [getWallLength, openingsByWall]);
+    return { horizontal, vertical };
+  }, [allRooms]);
 
-  // Pointer move handler (drag, pan, millimeter-accurate cursor tracking)
+  // Helper to test if a room wall is a shared interior partition
+  const isWallShared = useCallback((rx: number, ry: number, rw: number, rh: number, wall: WallSide): boolean => {
+    if (wall === 'N') {
+      return sharedPartitions.horizontal.some((p) => Math.abs(p.y - ry) < 0.05 && p.startX <= rx + rw && p.endX >= rx);
+    }
+    if (wall === 'S') {
+      return sharedPartitions.horizontal.some((p) => Math.abs(p.y - (ry + rh)) < 0.05 && p.startX <= rx + rw && p.endX >= rx);
+    }
+    if (wall === 'W') {
+      return sharedPartitions.vertical.some((p) => Math.abs(p.x - rx) < 0.05 && p.startY <= ry + rh && p.endY >= ry);
+    }
+    if (wall === 'E') {
+      return sharedPartitions.vertical.some((p) => Math.abs(p.x - (rx + rw)) < 0.05 && p.startY <= ry + rh && p.endY >= ry);
+    }
+    return false;
+  }, [sharedPartitions]);
+
+  // Pointer move handler (drag rooms, drag openings, resize handles, pan, cursor tracking)
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const coords = toRoomCoords(e.clientX, e.clientY);
     if (onCursorMove) {
@@ -265,18 +511,86 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
       return;
     }
 
+    // Handle dragging an entire room to reposition it
+    if (draggingRoomInfo && onUpdateRoom) {
+      const parentRoom = allRooms.find((r) => r.id === draggingRoomInfo.roomId);
+      if (parentRoom) {
+        const svg = svgRef.current;
+        const ctm = svg?.getScreenCTM();
+        const scale = ctm ? ctm.a : 1;
+        const deltaX = (e.clientX - draggingRoomInfo.startClient.x) / (scale * BASE_PPM);
+        const deltaY = (e.clientY - draggingRoomInfo.startClient.y) / (scale * BASE_PPM);
+
+        const rawX = draggingRoomInfo.startPos.x + deltaX;
+        const rawY = draggingRoomInfo.startPos.y + deltaY;
+
+        const otherRooms = allRooms.filter((r) => r.id !== draggingRoomInfo.roomId);
+        const snapped = computeSnappedRoomPosition(rawX, rawY, parentRoom, otherRooms, unit);
+
+        setAlignmentGuides({ x: snapped.guideX, y: snapped.guideY });
+
+        if (Math.abs(snapped.x - (parentRoom.x || 0)) > 0.005 || Math.abs(snapped.y - (parentRoom.y || 0)) > 0.005) {
+          onUpdateRoom({
+            ...parentRoom,
+            x: snapped.x,
+            y: snapped.y,
+          });
+        }
+      }
+      return;
+    }
+
+    // Handle resizing a room by dragging its edge or corner handle
+    if (resizingRoomInfo && onUpdateRoom) {
+      const parentRoom = allRooms.find((r) => r.id === resizingRoomInfo.roomId);
+      if (parentRoom) {
+        const svg = svgRef.current;
+        const ctm = svg?.getScreenCTM();
+        const scale = ctm ? ctm.a : 1;
+        const deltaX = (e.clientX - resizingRoomInfo.startClient.x) / (scale * BASE_PPM);
+        const deltaY = (e.clientY - resizingRoomInfo.startClient.y) / (scale * BASE_PPM);
+
+        let newBreadth = parentRoom.breadth;
+        let newLength = parentRoom.length;
+
+        if (resizingRoomInfo.handle === 'right' || resizingRoomInfo.handle === 'corner') {
+          const rawB = resizingRoomInfo.startDim.breadth + deltaX;
+          newBreadth = Math.max(1.5, Math.round(rawB * 10) / 10);
+        }
+        if (resizingRoomInfo.handle === 'bottom' || resizingRoomInfo.handle === 'corner') {
+          const rawL = resizingRoomInfo.startDim.length + deltaY;
+          newLength = Math.max(1.5, Math.round(rawL * 10) / 10);
+        }
+
+        if (newBreadth !== parentRoom.breadth || newLength !== parentRoom.length) {
+          onUpdateRoom({
+            ...parentRoom,
+            breadth: newBreadth,
+            length: newLength,
+          });
+        }
+      }
+      return;
+    }
+
     // Handle dragging an opening along its wall with precision snapping
-    if (draggingOpeningId && onUpdateOpening) {
-      const activeOp = room.openings.find((o) => o.id === draggingOpeningId);
+    if (draggingOpeningInfo && onUpdateOpening) {
+      const parentRoom = allRooms.find((r) => r.id === draggingOpeningInfo.roomId);
+      if (!parentRoom) return;
+
+      const activeOp = parentRoom.openings.find((o) => o.id === draggingOpeningInfo.openingId);
       if (!activeOp) return;
 
-      const wallLen = getWallLength(activeOp.wall);
+      const wallLen = activeOp.wall === 'N' || activeOp.wall === 'S' ? parentRoom.breadth : parentRoom.length;
       let newPos = activeOp.position;
 
+      const rx = parentRoom.x || 0;
+      const ry = parentRoom.y || 0;
+
       if (activeOp.wall === 'N' || activeOp.wall === 'S') {
-        newPos = coords.x - dragOffset;
+        newPos = (coords.x - rx) - dragOffset;
       } else {
-        newPos = coords.y - dragOffset;
+        newPos = (coords.y - ry) - dragOffset;
       }
 
       // Snap to increments: 0.05m in metric, 0.0254m (1 inch) in imperial
@@ -286,7 +600,6 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
         newPos = Math.round(newPos * 20) / 20; // 0.05m
       }
 
-      // Clamp so opening remains strictly within the wall bounds
       const minPos = 0.05;
       const maxPos = wallLen - activeOp.width - 0.05;
       newPos = Math.max(minPos, Math.min(maxPos, newPos));
@@ -301,9 +614,14 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
   };
 
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (e.button === 0 && !draggingOpeningId) {
+    if (e.button === 0 && !draggingOpeningInfo && !draggingRoomInfo && !resizingRoomInfo) {
       const target = e.target as SVGElement;
-      if (target.dataset.drag !== 'opening') {
+      if (
+        target.dataset.drag !== 'opening' &&
+        target.dataset.interactive !== 'room' &&
+        target.dataset.drag !== 'room' &&
+        target.dataset.drag !== 'resize'
+      ) {
         setIsPanning(true);
         setPanStart({ x: e.clientX, y: e.clientY });
         if (onSelectOpening) {
@@ -315,7 +633,39 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
 
   const handlePointerUp = () => {
     setIsPanning(false);
-    setDraggingOpeningId(null);
+    setDraggingOpeningInfo(null);
+    setDraggingRoomInfo(null);
+    setResizingRoomInfo(null);
+    setAlignmentGuides({ x: null, y: null });
+  };
+
+  // Start dragging a room to reposition it
+  const handleRoomDragStart = (e: React.PointerEvent, rm: RoomConfig) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    if (onSelectRoom) onSelectRoom(rm.id || null);
+    if (onSelectOpening) onSelectOpening(null);
+
+    setDraggingRoomInfo({
+      roomId: rm.id!,
+      startClient: { x: e.clientX, y: e.clientY },
+      startPos: { x: rm.x || 0, y: rm.y || 0 },
+    });
+  };
+
+  // Start resizing a room by dragging its edge or corner handle
+  const handleResizeStart = (e: React.PointerEvent, rm: RoomConfig, handle: 'right' | 'bottom' | 'corner') => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    if (onSelectRoom) onSelectRoom(rm.id || null);
+    if (onSelectOpening) onSelectOpening(null);
+
+    setResizingRoomInfo({
+      roomId: rm.id!,
+      handle,
+      startClient: { x: e.clientX, y: e.clientY },
+      startDim: { breadth: rm.breadth, length: rm.length },
+    });
   };
 
   // Mouse wheel zoom support
@@ -328,21 +678,28 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
   };
 
   // Start dragging an opening
-  const handleOpeningDragStart = (e: React.PointerEvent, op: Opening) => {
+  const handleOpeningDragStart = (e: React.PointerEvent, roomId: string, op: Opening) => {
     e.stopPropagation();
-    setDraggingOpeningId(op.id);
+    setDraggingOpeningInfo({ roomId, openingId: op.id });
     if (onSelectOpening) {
       onSelectOpening(op.id);
     }
     const coords = toRoomCoords(e.clientX, e.clientY);
-    const offset = (op.wall === 'N' || op.wall === 'S') ? (coords.x - op.position) : (coords.y - op.position);
+    const parentRoom = allRooms.find((r) => r.id === roomId);
+    const rx = parentRoom?.x || 0;
+    const ry = parentRoom?.y || 0;
+    const offset = (op.wall === 'N' || op.wall === 'S') ? (coords.x - rx - op.position) : (coords.y - ry - op.position);
     setDragOffset(offset);
   };
 
   // Selected opening object
   const selectedOpening = useMemo(() => {
-    return room.openings.find((o) => o.id === selectedOpeningId) || null;
-  }, [room.openings, selectedOpeningId]);
+    for (const r of allRooms) {
+      const found = r.openings.find((o) => o.id === selectedOpeningId);
+      if (found) return found;
+    }
+    return null;
+  }, [allRooms, selectedOpeningId]);
 
   return (
     <div className="relative w-full h-full flex items-center justify-center select-none overflow-hidden bg-white">
@@ -468,160 +825,193 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
           />
         )}
 
-        {/* 3. Room Interior Floor */}
-        <rect
-          x={toScreenX(0)}
-          y={toScreenY(0)}
-          width={breadth * BASE_PPM}
-          height={length * BASE_PPM}
-          fill={colors.roomFill}
-          stroke={colors.innerLine}
-          strokeWidth="1.5"
-        />
+        {/* 3. Rooms Interior Floors (Draggable to Reposition, Clickable to Select) */}
+        {allRooms.map((rm) => {
+          const rx = rm.x || 0;
+          const ry = rm.y || 0;
+          const isSelected = rm.id === activeRoomId;
+          const isDragging = draggingRoomInfo?.roomId === rm.id;
+          const isHovered = hoveredRoomId === rm.id;
 
-        {/* 4. Solid Wall Segments with Thickness */}
-        {/* North Wall Segments */}
-        {wallSegments.N.map((seg, i) => (
-          <g key={`wall-n-${i}`}>
-            <rect
-              x={toScreenX(seg.start)}
-              y={toScreenY(-wallT)}
-              width={(seg.end - seg.start) * BASE_PPM}
-              height={wallT * BASE_PPM}
-              fill={colors.wallFill}
-              stroke={colors.wallStroke}
-              strokeWidth="1.5"
-            />
-            <rect
-              x={toScreenX(seg.start)}
-              y={toScreenY(-wallT)}
-              width={(seg.end - seg.start) * BASE_PPM}
-              height={wallT * BASE_PPM}
-              fill={`url(#wall-hatch-${theme})`}
-            />
-          </g>
-        ))}
+          return (
+            <g key={`room-floor-${rm.id}`}>
+              <rect
+                data-interactive="room"
+                data-drag="room"
+                x={toScreenX(rx)}
+                y={toScreenY(ry)}
+                width={rm.breadth * BASE_PPM}
+                height={rm.length * BASE_PPM}
+                fill={isDragging ? '#eff6ff' : isHovered ? '#f8fafc' : colors.roomFill}
+                stroke={isDragging ? '#2563eb' : isSelected ? '#2563eb' : colors.innerLine}
+                strokeWidth={isDragging ? '3.5' : isSelected ? '2.5' : '1.5'}
+                strokeDasharray={isSelected ? '6 3' : 'none'}
+                className="cursor-move transition-colors"
+                onPointerDown={(e) => handleRoomDragStart(e, rm)}
+                onMouseEnter={() => setHoveredRoomId(rm.id || null)}
+                onMouseLeave={() => setHoveredRoomId(null)}
+                style={isDragging ? { filter: 'drop-shadow(0 10px 20px rgba(37,99,235,0.25))' } : undefined}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onSelectRoom) onSelectRoom(rm.id || null);
+                }}
+              />
+            </g>
+          );
+        })}
 
-        {/* South Wall Segments */}
-        {wallSegments.S.map((seg, i) => (
-          <g key={`wall-s-${i}`}>
-            <rect
-              x={toScreenX(seg.start)}
-              y={toScreenY(length)}
-              width={(seg.end - seg.start) * BASE_PPM}
-              height={wallT * BASE_PPM}
-              fill={colors.wallFill}
-              stroke={colors.wallStroke}
-              strokeWidth="1.5"
-            />
-            <rect
-              x={toScreenX(seg.start)}
-              y={toScreenY(length)}
-              width={(seg.end - seg.start) * BASE_PPM}
-              height={wallT * BASE_PPM}
-              fill={`url(#wall-hatch-${theme})`}
-            />
-          </g>
-        ))}
+        {/* 4. Multi-Room Walls (Exterior Envelope vs. Interior Dividing Partitions) */}
+        {allRooms.map((rm) => {
+          const rx = rm.x || 0;
+          const ry = rm.y || 0;
+          const rw = rm.breadth;
+          const rh = rm.length;
 
-        {/* West Wall Segments */}
-        {wallSegments.W.map((seg, i) => (
-          <g key={`wall-w-${i}`}>
-            <rect
-              x={toScreenX(-wallT)}
-              y={toScreenY(seg.start)}
-              width={wallT * BASE_PPM}
-              height={(seg.end - seg.start) * BASE_PPM}
-              fill={colors.wallFill}
-              stroke={colors.wallStroke}
-              strokeWidth="1.5"
-            />
-            <rect
-              x={toScreenX(-wallT)}
-              y={toScreenY(seg.start)}
-              width={wallT * BASE_PPM}
-              height={(seg.end - seg.start) * BASE_PPM}
-              fill={`url(#wall-hatch-${theme})`}
-            />
-          </g>
-        ))}
+          // Check which walls are exterior envelope vs. interior shared partitions
+          const isNorthShared = isWallShared(rx, ry, rw, rh, 'N');
+          const isSouthShared = isWallShared(rx, ry, rw, rh, 'S');
+          const isWestShared = isWallShared(rx, ry, rw, rh, 'W');
+          const isEastShared = isWallShared(rx, ry, rw, rh, 'E');
 
-        {/* East Wall Segments */}
-        {wallSegments.E.map((seg, i) => (
-          <g key={`wall-e-${i}`}>
-            <rect
-              x={toScreenX(breadth)}
-              y={toScreenY(seg.start)}
-              width={wallT * BASE_PPM}
-              height={(seg.end - seg.start) * BASE_PPM}
-              fill={colors.wallFill}
-              stroke={colors.wallStroke}
-              strokeWidth="1.5"
-            />
-            <rect
-              x={toScreenX(breadth)}
-              y={toScreenY(seg.start)}
-              width={wallT * BASE_PPM}
-              height={(seg.end - seg.start) * BASE_PPM}
-              fill={`url(#wall-hatch-${theme})`}
-            />
-          </g>
-        ))}
+          // Segment calculations cutting out doors/windows
+          const getSegments = (wallSide: WallSide, length: number) => {
+            const ops = rm.openings.filter((o) => o.wall === wallSide).sort((a, b) => a.position - b.position);
+            const segs: Array<{ start: number; end: number }> = [];
+            let cur = 0;
+            ops.forEach((o) => {
+              const start = Math.max(0, Math.min(length, o.position));
+              const end = Math.max(0, Math.min(length, o.position + o.width));
+              if (start > cur) segs.push({ start: cur, end: start });
+              cur = Math.max(cur, end);
+            });
+            if (cur < length) segs.push({ start: cur, end: length });
+            return segs;
+          };
 
-        {/* 5. Solid Wall Corner Blocks (Mitered Joins) */}
-        {/* Top-Left Corner (-wallT, -wallT) */}
-        <rect
-          x={toScreenX(-wallT)}
-          y={toScreenY(-wallT)}
-          width={wallT * BASE_PPM}
-          height={wallT * BASE_PPM}
-          fill={colors.wallFill}
-          stroke={colors.wallStroke}
-          strokeWidth="1.5"
-        />
-        {/* Top-Right Corner (breadth, -wallT) */}
-        <rect
-          x={toScreenX(breadth)}
-          y={toScreenY(-wallT)}
-          width={wallT * BASE_PPM}
-          height={wallT * BASE_PPM}
-          fill={colors.wallFill}
-          stroke={colors.wallStroke}
-          strokeWidth="1.5"
-        />
-        {/* Bottom-Left Corner (-wallT, length) */}
-        <rect
-          x={toScreenX(-wallT)}
-          y={toScreenY(length)}
-          width={wallT * BASE_PPM}
-          height={wallT * BASE_PPM}
-          fill={colors.wallFill}
-          stroke={colors.wallStroke}
-          strokeWidth="1.5"
-        />
-        {/* Bottom-Right Corner (breadth, length) */}
-        <rect
-          x={toScreenX(breadth)}
-          y={toScreenY(length)}
-          width={wallT * BASE_PPM}
-          height={wallT * BASE_PPM}
-          fill={colors.wallFill}
-          stroke={colors.wallStroke}
-          strokeWidth="1.5"
-        />
+          const northSegs = getSegments('N', rw);
+          const southSegs = getSegments('S', rw);
+          const westSegs = getSegments('W', rh);
+          const eastSegs = getSegments('E', rh);
 
-        {/* ================================================================= */}
-        {/* 6. CAD ORIGIN DATUM MARKER - SNAPPED TO CORNER OF GRID SQUARE     */}
-        {/* At Room Corner (0,0), aligned directly with major grid axes       */}
-        {/* ================================================================= */}
-        <g transform={`translate(${originX}, ${originY})`} className="pointer-events-none">
+          return (
+            <g key={`room-walls-${rm.id}`}>
+              {/* North Wall: render only if exterior OR if rm is the top-most room */}
+              {(!isNorthShared || !sharedPartitions.horizontal.some(p => Math.abs(p.y - ry) < 0.05 && p.room2Id === rm.id)) && (
+                northSegs.map((seg, i) => {
+                  const wallThick = isNorthShared ? intWallT : extWallT;
+                  return (
+                    <g key={`nw-${rm.id}-${i}`}>
+                      <rect
+                        x={toScreenX(rx + seg.start)}
+                        y={toScreenY(ry - wallThick)}
+                        width={(seg.end - seg.start) * BASE_PPM}
+                        height={wallThick * BASE_PPM}
+                        fill={colors.wallFill}
+                        stroke={colors.wallStroke}
+                        strokeWidth="1.5"
+                      />
+                      {!isNorthShared && (
+                        <rect
+                          x={toScreenX(rx + seg.start)}
+                          y={toScreenY(ry - wallThick)}
+                          width={(seg.end - seg.start) * BASE_PPM}
+                          height={wallThick * BASE_PPM}
+                          fill={`url(#wall-hatch-${theme})`}
+                        />
+                      )}
+                    </g>
+                  );
+                })
+              )}
+
+              {/* South Wall: render only if exterior */}
+              {!isSouthShared && (
+                southSegs.map((seg, i) => (
+                  <g key={`sw-${rm.id}-${i}`}>
+                    <rect
+                      x={toScreenX(rx + seg.start)}
+                      y={toScreenY(ry + rh)}
+                      width={(seg.end - seg.start) * BASE_PPM}
+                      height={extWallT * BASE_PPM}
+                      fill={colors.wallFill}
+                      stroke={colors.wallStroke}
+                      strokeWidth="1.5"
+                    />
+                    <rect
+                      x={toScreenX(rx + seg.start)}
+                      y={toScreenY(ry + rh)}
+                      width={(seg.end - seg.start) * BASE_PPM}
+                      height={extWallT * BASE_PPM}
+                      fill={`url(#wall-hatch-${theme})`}
+                    />
+                  </g>
+                ))
+              )}
+
+              {/* West Wall: render only if exterior OR if rm is the left-most room */}
+              {(!isWestShared || !sharedPartitions.vertical.some(p => Math.abs(p.x - rx) < 0.05 && p.room2Id === rm.id)) && (
+                westSegs.map((seg, i) => {
+                  const wallThick = isWestShared ? intWallT : extWallT;
+                  return (
+                    <g key={`ww-${rm.id}-${i}`}>
+                      <rect
+                        x={toScreenX(rx - wallThick)}
+                        y={toScreenY(ry + seg.start)}
+                        width={wallThick * BASE_PPM}
+                        height={(seg.end - seg.start) * BASE_PPM}
+                        fill={colors.wallFill}
+                        stroke={colors.wallStroke}
+                        strokeWidth="1.5"
+                      />
+                      {!isWestShared && (
+                        <rect
+                          x={toScreenX(rx - wallThick)}
+                          y={toScreenY(ry + seg.start)}
+                          width={wallThick * BASE_PPM}
+                          height={(seg.end - seg.start) * BASE_PPM}
+                          fill={`url(#wall-hatch-${theme})`}
+                        />
+                      )}
+                    </g>
+                  );
+                })
+              )}
+
+              {/* East Wall: render only if exterior */}
+              {!isEastShared && (
+                eastSegs.map((seg, i) => (
+                  <g key={`ew-${rm.id}-${i}`}>
+                    <rect
+                      x={toScreenX(rx + rw)}
+                      y={toScreenY(ry + seg.start)}
+                      width={extWallT * BASE_PPM}
+                      height={(seg.end - seg.start) * BASE_PPM}
+                      fill={colors.wallFill}
+                      stroke={colors.wallStroke}
+                      strokeWidth="1.5"
+                    />
+                    <rect
+                      x={toScreenX(rx + rw)}
+                      y={toScreenY(ry + seg.start)}
+                      width={extWallT * BASE_PPM}
+                      height={(seg.end - seg.start) * BASE_PPM}
+                      fill={`url(#wall-hatch-${theme})`}
+                    />
+                  </g>
+                ))
+              )}
+            </g>
+          );
+        })}
+
+        {/* 5. CAD ORIGIN DATUM MARKER - SNAPPED TO (0, 0) GRID CORNER */}
+        <g transform={`translate(${toScreenX(bounds.minX)}, ${toScreenY(bounds.minY)})`} className="pointer-events-none">
           {/* Crosshair extending along grid axes */}
           <line x1="-30" y1="0" x2="30" y2="0" stroke="#ef4444" strokeWidth="1.2" strokeDasharray="4 2" opacity="0.85" />
           <line x1="0" y1="-30" x2="0" y2="30" stroke="#ef4444" strokeWidth="1.2" strokeDasharray="4 2" opacity="0.85" />
 
           {/* Surveyor / CAD Datum Target Circle */}
           <circle cx="0" cy="0" r="10" fill="none" stroke="#ef4444" strokeWidth="1.5" />
-          {/* Diagonal quadrant fills */}
           <path d="M 0 0 L 10 0 A 10 10 0 0 0 0 -10 Z" fill="#ef4444" opacity="0.65" />
           <path d="M 0 0 L -10 0 A 10 10 0 0 0 0 10 Z" fill="#ef4444" opacity="0.65" />
           <circle cx="0" cy="0" r="2.5" fill="#ffffff" />
@@ -635,260 +1025,383 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
           </g>
         </g>
 
-        {/* 7. Openings (Doors & Windows) */}
-        {room.openings.map((op, idx) => {
-          const isSelected = op.id === selectedOpeningId;
-          const isDoor = op.type === 'door';
-          const pos = op.position;
-          const w = op.width;
-          const label = isDoor ? `D${idx + 1}` : `W${idx + 1}`;
+        {/* 6. Openings (Doors & Windows) across all rooms */}
+        {allRooms.map((rm) => {
+          const rx = rm.x || 0;
+          const ry = rm.y || 0;
+          const rw = rm.breadth;
+          const rh = rm.length;
 
-          // Calculate Opening Screen Bounds & Geometry in SVG Units
-          let cutX = 0;
-          let cutY = 0;
-          let cutW = 0;
-          let cutH = 0;
-          let doorHingeX = 0;
-          let doorHingeY = 0;
-          let doorLeafEndX = 0;
-          let doorLeafEndY = 0;
-          let arcPath = '';
+          return rm.openings.map((op, idx) => {
+            const isSelected = op.id === selectedOpeningId;
+            const isDoor = op.type === 'door';
+            const pos = op.position;
+            const w = op.width;
+            const label = isDoor ? `D${idx + 1}` : `W${idx + 1}`;
 
-          const flipHinge = !!op.flipHinge;
-          const flipSwing = !!op.flipSwing;
+            // Check if this wall is interior shared partition or exterior wall
+            const isShared = isWallShared(rx, ry, rw, rh, op.wall);
+            const wallThick = isShared ? intWallT : extWallT;
 
-          if (op.wall === 'N') {
-            cutX = toScreenX(pos);
-            cutY = toScreenY(-wallT);
-            cutW = w * BASE_PPM;
-            cutH = wallT * BASE_PPM;
+            let cutX = 0;
+            let cutY = 0;
+            let cutW = 0;
+            let cutH = 0;
+            let doorHingeX = 0;
+            let doorHingeY = 0;
+            let doorLeafEndX = 0;
+            let doorLeafEndY = 0;
+            let arcPath = '';
 
-            const swingDirY = flipSwing ? -1 : 1;
-            const hingeAtLeft = !flipHinge;
-            doorHingeX = hingeAtLeft ? toScreenX(pos) : toScreenX(pos + w);
-            doorHingeY = toScreenY(0);
+            const flipHinge = !!op.flipHinge;
+            const flipSwing = !!op.flipSwing;
 
-            const leafTargetX = doorHingeX;
-            const leafTargetY = doorHingeY + swingDirY * (w * BASE_PPM);
-            doorLeafEndX = leafTargetX;
-            doorLeafEndY = leafTargetY;
+            if (op.wall === 'N') {
+              cutX = toScreenX(rx + pos);
+              cutY = toScreenY(ry - wallThick);
+              cutW = w * BASE_PPM;
+              cutH = wallThick * BASE_PPM;
 
-            const closedX = hingeAtLeft ? toScreenX(pos + w) : toScreenX(pos);
-            const closedY = doorHingeY;
-            const sweepFlag = (hingeAtLeft ? !flipSwing : flipSwing) ? 1 : 0;
-            arcPath = `M ${closedX} ${closedY} A ${w * BASE_PPM} ${w * BASE_PPM} 0 0 ${sweepFlag} ${doorLeafEndX} ${doorLeafEndY}`;
-          } else if (op.wall === 'S') {
-            cutX = toScreenX(pos);
-            cutY = toScreenY(length);
-            cutW = w * BASE_PPM;
-            cutH = wallT * BASE_PPM;
+              const swingDirY = flipSwing ? -1 : 1;
+              const hingeAtLeft = !flipHinge;
+              doorHingeX = hingeAtLeft ? toScreenX(rx + pos) : toScreenX(rx + pos + w);
+              doorHingeY = toScreenY(ry);
 
-            const swingDirY = flipSwing ? 1 : -1;
-            const hingeAtLeft = !flipHinge;
-            doorHingeX = hingeAtLeft ? toScreenX(pos) : toScreenX(pos + w);
-            doorHingeY = toScreenY(length);
+              doorLeafEndX = doorHingeX;
+              doorLeafEndY = doorHingeY + swingDirY * (w * BASE_PPM);
 
-            doorLeafEndX = doorHingeX;
-            doorLeafEndY = doorHingeY + swingDirY * (w * BASE_PPM);
+              const closedX = hingeAtLeft ? toScreenX(rx + pos + w) : toScreenX(rx + pos);
+              const closedY = doorHingeY;
+              const sweepFlag = (hingeAtLeft ? !flipSwing : flipSwing) ? 1 : 0;
+              arcPath = `M ${closedX} ${closedY} A ${w * BASE_PPM} ${w * BASE_PPM} 0 0 ${sweepFlag} ${doorLeafEndX} ${doorLeafEndY}`;
+            } else if (op.wall === 'S') {
+              cutX = toScreenX(rx + pos);
+              cutY = toScreenY(ry + rh);
+              cutW = w * BASE_PPM;
+              cutH = wallThick * BASE_PPM;
 
-            const closedX = hingeAtLeft ? toScreenX(pos + w) : toScreenX(pos);
-            const closedY = doorHingeY;
-            const sweepFlag = (hingeAtLeft ? flipSwing : !flipSwing) ? 1 : 0;
-            arcPath = `M ${closedX} ${closedY} A ${w * BASE_PPM} ${w * BASE_PPM} 0 0 ${sweepFlag} ${doorLeafEndX} ${doorLeafEndY}`;
-          } else if (op.wall === 'W') {
-            cutX = toScreenX(-wallT);
-            cutY = toScreenY(pos);
-            cutW = wallT * BASE_PPM;
-            cutH = w * BASE_PPM;
+              const swingDirY = flipSwing ? 1 : -1;
+              const hingeAtLeft = !flipHinge;
+              doorHingeX = hingeAtLeft ? toScreenX(rx + pos) : toScreenX(rx + pos + w);
+              doorHingeY = toScreenY(ry + rh);
 
-            const swingDirX = flipSwing ? -1 : 1;
-            const hingeAtTop = !flipHinge;
-            doorHingeX = toScreenX(0);
-            doorHingeY = hingeAtTop ? toScreenY(pos) : toScreenY(pos + w);
+              doorLeafEndX = doorHingeX;
+              doorLeafEndY = doorHingeY + swingDirY * (w * BASE_PPM);
 
-            doorLeafEndX = doorHingeX + swingDirX * (w * BASE_PPM);
-            doorLeafEndY = doorHingeY;
+              const closedX = hingeAtLeft ? toScreenX(rx + pos + w) : toScreenX(rx + pos);
+              const closedY = doorHingeY;
+              const sweepFlag = (hingeAtLeft ? flipSwing : !flipSwing) ? 1 : 0;
+              arcPath = `M ${closedX} ${closedY} A ${w * BASE_PPM} ${w * BASE_PPM} 0 0 ${sweepFlag} ${doorLeafEndX} ${doorLeafEndY}`;
+            } else if (op.wall === 'W') {
+              cutX = toScreenX(rx - wallThick);
+              cutY = toScreenY(ry + pos);
+              cutW = wallThick * BASE_PPM;
+              cutH = w * BASE_PPM;
 
-            const closedX = doorHingeX;
-            const closedY = hingeAtTop ? toScreenY(pos + w) : toScreenY(pos);
-            const sweepFlag = (hingeAtTop ? flipSwing : !flipSwing) ? 1 : 0;
-            arcPath = `M ${closedX} ${closedY} A ${w * BASE_PPM} ${w * BASE_PPM} 0 0 ${sweepFlag} ${doorLeafEndX} ${doorLeafEndY}`;
-          } else if (op.wall === 'E') {
-            cutX = toScreenX(breadth);
-            cutY = toScreenY(pos);
-            cutW = wallT * BASE_PPM;
-            cutH = w * BASE_PPM;
+              const swingDirX = flipSwing ? -1 : 1;
+              const hingeAtTop = !flipHinge;
+              doorHingeX = toScreenX(rx);
+              doorHingeY = hingeAtTop ? toScreenY(ry + pos) : toScreenY(ry + pos + w);
 
-            const swingDirX = flipSwing ? 1 : -1;
-            const hingeAtTop = !flipHinge;
-            doorHingeX = toScreenX(breadth);
-            doorHingeY = hingeAtTop ? toScreenY(pos) : toScreenY(pos + w);
+              doorLeafEndX = doorHingeX + swingDirX * (w * BASE_PPM);
+              doorLeafEndY = doorHingeY;
 
-            doorLeafEndX = doorHingeX + swingDirX * (w * BASE_PPM);
-            doorLeafEndY = doorHingeY;
+              const closedX = doorHingeX;
+              const closedY = hingeAtTop ? toScreenY(ry + pos + w) : toScreenY(ry + pos);
+              const sweepFlag = (hingeAtTop ? flipSwing : !flipSwing) ? 1 : 0;
+              arcPath = `M ${closedX} ${closedY} A ${w * BASE_PPM} ${w * BASE_PPM} 0 0 ${sweepFlag} ${doorLeafEndX} ${doorLeafEndY}`;
+            } else if (op.wall === 'E') {
+              cutX = toScreenX(rx + rw);
+              cutY = toScreenY(ry + pos);
+              cutW = wallThick * BASE_PPM;
+              cutH = w * BASE_PPM;
 
-            const closedX = doorHingeX;
-            const closedY = hingeAtTop ? toScreenY(pos + w) : toScreenY(pos);
-            const sweepFlag = (hingeAtTop ? !flipSwing : flipSwing) ? 1 : 0;
-            arcPath = `M ${closedX} ${closedY} A ${w * BASE_PPM} ${w * BASE_PPM} 0 0 ${sweepFlag} ${doorLeafEndX} ${doorLeafEndY}`;
-          }
+              const swingDirX = flipSwing ? 1 : -1;
+              const hingeAtTop = !flipHinge;
+              doorHingeX = toScreenX(rx + rw);
+              doorHingeY = hingeAtTop ? toScreenY(ry + pos) : toScreenY(ry + pos + w);
+
+              doorLeafEndX = doorHingeX + swingDirX * (w * BASE_PPM);
+              doorLeafEndY = doorHingeY;
+
+              const closedX = doorHingeX;
+              const closedY = hingeAtTop ? toScreenY(ry + pos + w) : toScreenY(ry + pos);
+              const sweepFlag = (hingeAtTop ? !flipSwing : flipSwing) ? 1 : 0;
+              arcPath = `M ${closedX} ${closedY} A ${w * BASE_PPM} ${w * BASE_PPM} 0 0 ${sweepFlag} ${doorLeafEndX} ${doorLeafEndY}`;
+            }
+
+            return (
+              <g
+                key={`${rm.id}-${op.id}`}
+                data-drag="opening"
+                className="cursor-move group"
+                onPointerDown={(e) => handleOpeningDragStart(e, rm.id!, op)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onSelectOpening) onSelectOpening(op.id);
+                  if (onSelectRoom) onSelectRoom(rm.id!);
+                }}
+              >
+                {/* Wall Opening Cutout */}
+                <rect
+                  x={cutX}
+                  y={cutY}
+                  width={cutW}
+                  height={cutH}
+                  fill={colors.roomFill}
+                  stroke={isSelected ? colors.selectedGlow : colors.innerLine}
+                  strokeWidth={isSelected ? '2.5' : '1'}
+                  strokeDasharray={isSelected ? '4 2' : 'none'}
+                />
+
+                {/* Jamb Lines */}
+                {op.wall === 'N' || op.wall === 'S' ? (
+                  <>
+                    <line x1={cutX} y1={cutY} x2={cutX} y2={cutY + cutH} stroke={colors.wallStroke} strokeWidth="2" />
+                    <line x1={cutX + cutW} y1={cutY} x2={cutX + cutW} y2={cutY + cutH} stroke={colors.wallStroke} strokeWidth="2" />
+                  </>
+                ) : (
+                  <>
+                    <line x1={cutX} y1={cutY} x2={cutX + cutW} y2={cutY} stroke={colors.wallStroke} strokeWidth="2" />
+                    <line x1={cutX} y1={cutY + cutH} x2={cutX + cutW} y2={cutY + cutH} stroke={colors.wallStroke} strokeWidth="2" />
+                  </>
+                )}
+
+                {/* Door Representation */}
+                {isDoor && (
+                  <g>
+                    <path
+                      d={arcPath}
+                      fill="none"
+                      stroke={isSelected ? colors.selectedGlow : colors.doorArc}
+                      strokeWidth="1.8"
+                      strokeDasharray="4 3"
+                    />
+                    <line
+                      x1={doorHingeX}
+                      y1={doorHingeY}
+                      x2={doorLeafEndX}
+                      y2={doorLeafEndY}
+                      stroke={isSelected ? colors.selectedGlow : colors.doorLeaf}
+                      strokeWidth="3.5"
+                      strokeLinecap="round"
+                    />
+                    <circle
+                      cx={doorHingeX}
+                      cy={doorHingeY}
+                      r="4"
+                      fill={isSelected ? colors.selectedGlow : colors.doorLeaf}
+                    />
+                  </g>
+                )}
+
+                {/* Window Representation */}
+                {!isDoor && (
+                  <g>
+                    {op.wall === 'N' && (
+                      <>
+                        <line x1={cutX - 4} y1={cutY} x2={cutX + cutW + 4} y2={cutY} stroke={colors.windowSill} strokeWidth="3" />
+                        <line x1={cutX} y1={cutY + cutH * 0.35} x2={cutX + cutW} y2={cutY + cutH * 0.35} stroke={colors.windowGlass} strokeWidth="2" />
+                        <line x1={cutX} y1={cutY + cutH * 0.65} x2={cutX + cutW} y2={cutY + cutH * 0.65} stroke={colors.windowGlass} strokeWidth="2" />
+                      </>
+                    )}
+                    {op.wall === 'S' && (
+                      <>
+                        <line x1={cutX - 4} y1={cutY + cutH} x2={cutX + cutW + 4} y2={cutY + cutH} stroke={colors.windowSill} strokeWidth="3" />
+                        <line x1={cutX} y1={cutY + cutH * 0.35} x2={cutX + cutW} y2={cutY + cutH * 0.35} stroke={colors.windowGlass} strokeWidth="2" />
+                        <line x1={cutX} y1={cutY + cutH * 0.65} x2={cutX + cutW} y2={cutY + cutH * 0.65} stroke={colors.windowGlass} strokeWidth="2" />
+                      </>
+                    )}
+                    {op.wall === 'W' && (
+                      <>
+                        <line x1={cutX} y1={cutY - 4} x2={cutX} y2={cutY + cutH + 4} stroke={colors.windowSill} strokeWidth="3" />
+                        <line x1={cutX + cutW * 0.35} y1={cutY} x2={cutX + cutW * 0.35} y2={cutY + cutH} stroke={colors.windowGlass} strokeWidth="2" />
+                        <line x1={cutX + cutW * 0.65} y1={cutY} x2={cutX + cutW * 0.65} y2={cutY + cutH} stroke={colors.windowGlass} strokeWidth="2" />
+                      </>
+                    )}
+                    {op.wall === 'E' && (
+                      <>
+                        <line x1={cutX + cutW} y1={cutY - 4} x2={cutX + cutW} y2={cutY + cutH + 4} stroke={colors.windowSill} strokeWidth="3" />
+                        <line x1={cutX + cutW * 0.35} y1={cutY} x2={cutX + cutW * 0.35} y2={cutY + cutH} stroke={colors.windowGlass} strokeWidth="2" />
+                        <line x1={cutX + cutW * 0.65} y1={cutY} x2={cutX + cutW * 0.65} y2={cutY + cutH} stroke={colors.windowGlass} strokeWidth="2" />
+                      </>
+                    )}
+                  </g>
+                )}
+
+                {/* Tag Badge */}
+                <g
+                  transform={`translate(${cutX + cutW / 2}, ${
+                    op.wall === 'N'
+                      ? cutY - 18
+                      : op.wall === 'S'
+                      ? cutY + cutH + 20
+                      : cutY + cutH / 2
+                  })`}
+                >
+                  <rect
+                    x="-36"
+                    y="-12"
+                    width="72"
+                    height="24"
+                    rx="5"
+                    fill={isSelected ? colors.selectedGlow : colors.tagBg}
+                    stroke={isSelected ? '#ffffff' : colors.tagBorder}
+                    strokeWidth="1.5"
+                    style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))' }}
+                  />
+                  <text
+                    x="0"
+                    y="4"
+                    textAnchor="middle"
+                    fill={isSelected ? '#000000' : colors.tagText}
+                    fontSize="12"
+                    fontFamily="system-ui, sans-serif"
+                    fontWeight="bold"
+                  >
+                    {label} · {formatDistance(w, unit)}
+                  </text>
+                </g>
+              </g>
+            );
+          });
+        })}
+
+        {/* 7. Room Center Architectural Stamps */}
+        {allRooms.map((rm) => {
+          const rx = rm.x || 0;
+          const ry = rm.y || 0;
+          const cx = rx + rm.breadth / 2;
+          const cy = ry + rm.length / 2;
+          const areaSqm = rm.breadth * rm.length;
+          const isSelected = rm.id === activeRoomId;
 
           return (
             <g
-              key={op.id}
-              data-drag="opening"
-              className="cursor-move group"
-              onPointerDown={(e) => handleOpeningDragStart(e, op)}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (onSelectOpening) onSelectOpening(op.id);
-              }}
+              key={`room-stamp-${rm.id}`}
+              transform={`translate(${toScreenX(cx)}, ${toScreenY(cy)})`}
+              className="pointer-events-none"
             >
-              {/* Wall opening cutout */}
-              <rect
-                x={cutX}
-                y={cutY}
-                width={cutW}
-                height={cutH}
-                fill={colors.roomFill}
-                stroke={isSelected ? colors.selectedGlow : colors.innerLine}
-                strokeWidth={isSelected ? '2.5' : '1'}
-                strokeDasharray={isSelected ? '4 2' : 'none'}
-              />
-
-              {/* End Jamb Lines */}
-              {op.wall === 'N' || op.wall === 'S' ? (
-                <>
-                  <line x1={cutX} y1={cutY} x2={cutX} y2={cutY + cutH} stroke={colors.wallStroke} strokeWidth="2" />
-                  <line x1={cutX + cutW} y1={cutY} x2={cutX + cutW} y2={cutY + cutH} stroke={colors.wallStroke} strokeWidth="2" />
-                </>
-              ) : (
-                <>
-                  <line x1={cutX} y1={cutY} x2={cutX + cutW} y2={cutY} stroke={colors.wallStroke} strokeWidth="2" />
-                  <line x1={cutX} y1={cutY + cutH} x2={cutX + cutW} y2={cutY + cutH} stroke={colors.wallStroke} strokeWidth="2" />
-                </>
+              {/* Type pill */}
+              {rm.type && (
+                <rect
+                  x="-35"
+                  y="-34"
+                  width="70"
+                  height="16"
+                  rx="4"
+                  fill={isSelected ? '#2563eb' : '#f1f5f9'}
+                  stroke={isSelected ? '#1d4ed8' : '#cbd5e1'}
+                  strokeWidth="1"
+                />
+              )}
+              {rm.type && (
+                <text
+                  x="0"
+                  y="-22"
+                  textAnchor="middle"
+                  fill={isSelected ? '#ffffff' : '#64748b'}
+                  fontSize="9.5"
+                  fontFamily="system-ui, sans-serif"
+                  fontWeight="bold"
+                  letterSpacing="0.08em"
+                >
+                  {rm.type.toUpperCase()}
+                </text>
               )}
 
-              {/* Architectural Door Representation */}
-              {isDoor && (
-                <g>
-                  {/* Dashed Swing Arc */}
-                  <path
-                    d={arcPath}
-                    fill="none"
-                    stroke={isSelected ? colors.selectedGlow : colors.doorArc}
-                    strokeWidth="1.8"
-                    strokeDasharray="4 3"
-                  />
-                  {/* Open Door Leaf Line */}
-                  <line
-                    x1={doorHingeX}
-                    y1={doorHingeY}
-                    x2={doorLeafEndX}
-                    y2={doorLeafEndY}
-                    stroke={isSelected ? colors.selectedGlow : colors.doorLeaf}
-                    strokeWidth="3.5"
-                    strokeLinecap="round"
-                  />
-                  {/* Hinge Pin Circle */}
-                  <circle
-                    cx={doorHingeX}
-                    cy={doorHingeY}
-                    r="4"
-                    fill={isSelected ? colors.selectedGlow : colors.doorLeaf}
-                  />
-                </g>
-              )}
+              {/* Room Name */}
+              <text
+                x="0"
+                y="-4"
+                textAnchor="middle"
+                fill={colors.dimensionText}
+                fontSize={rm.breadth < 3 || rm.length < 3 ? '16' : '19'}
+                fontFamily="system-ui, sans-serif"
+                fontWeight="bold"
+                letterSpacing="0.04em"
+              >
+                {rm.name || 'ROOM'}
+              </text>
 
-              {/* Architectural Window Representation */}
-              {!isDoor && (
-                <g>
-                  {/* Outer Window Sill */}
-                  {op.wall === 'N' && (
-                    <>
-                      <line x1={cutX - 4} y1={cutY} x2={cutX + cutW + 4} y2={cutY} stroke={colors.windowSill} strokeWidth="3" />
-                      <line x1={cutX} y1={cutY + cutH * 0.35} x2={cutX + cutW} y2={cutY + cutH * 0.35} stroke={colors.windowGlass} strokeWidth="2" />
-                      <line x1={cutX} y1={cutY + cutH * 0.65} x2={cutX + cutW} y2={cutY + cutH * 0.65} stroke={colors.windowGlass} strokeWidth="2" />
-                    </>
-                  )}
-                  {op.wall === 'S' && (
-                    <>
-                      <line x1={cutX - 4} y1={cutY + cutH} x2={cutX + cutW + 4} y2={cutY + cutH} stroke={colors.windowSill} strokeWidth="3" />
-                      <line x1={cutX} y1={cutY + cutH * 0.35} x2={cutX + cutW} y2={cutY + cutH * 0.35} stroke={colors.windowGlass} strokeWidth="2" />
-                      <line x1={cutX} y1={cutY + cutH * 0.65} x2={cutX + cutW} y2={cutY + cutH * 0.65} stroke={colors.windowGlass} strokeWidth="2" />
-                    </>
-                  )}
-                  {op.wall === 'W' && (
-                    <>
-                      <line x1={cutX} y1={cutY - 4} x2={cutX} y2={cutY + cutH + 4} stroke={colors.windowSill} strokeWidth="3" />
-                      <line x1={cutX + cutW * 0.35} y1={cutY} x2={cutX + cutW * 0.35} y2={cutY + cutH} stroke={colors.windowGlass} strokeWidth="2" />
-                      <line x1={cutX + cutW * 0.65} y1={cutY} x2={cutX + cutW * 0.65} y2={cutY + cutH} stroke={colors.windowGlass} strokeWidth="2" />
-                    </>
-                  )}
-                  {op.wall === 'E' && (
-                    <>
-                      <line x1={cutX + cutW} y1={cutY - 4} x2={cutX + cutW} y2={cutY + cutH + 4} stroke={colors.windowSill} strokeWidth="3" />
-                      <line x1={cutX + cutW * 0.35} y1={cutY} x2={cutX + cutW * 0.35} y2={cutY + cutH} stroke={colors.windowGlass} strokeWidth="2" />
-                      <line x1={cutX + cutW * 0.65} y1={cutY} x2={cutX + cutW * 0.65} y2={cutY + cutH} stroke={colors.windowGlass} strokeWidth="2" />
-                    </>
-                  )}
-                </g>
-              )}
+              {/* Area */}
+              <text
+                x="0"
+                y="16"
+                textAnchor="middle"
+                fill={colors.innerLine}
+                fontSize={rm.breadth < 3 || rm.length < 3 ? '13' : '15'}
+                fontFamily="system-ui, monospace"
+                fontWeight="600"
+              >
+                {unit === 'imperial'
+                  ? `${(areaSqm * 10.7639).toFixed(1)} sq ft  (${areaSqm.toFixed(2)} m²)`
+                  : `${areaSqm.toFixed(2)} m²  (${(areaSqm * 10.7639).toFixed(1)} sq ft)`}
+              </text>
 
-              {/* Architectural Tag Badge */}
+              {/* Dimensions */}
+              <text
+                x="0"
+                y="32"
+                textAnchor="middle"
+                fill={colors.innerLine}
+                fontSize="12"
+                fontFamily="system-ui, monospace"
+                opacity="0.85"
+              >
+                {formatDistance(rm.breadth, unit)} × {formatDistance(rm.length, unit)}
+              </text>
+
+              {/* Move Indicator badge in room stamp */}
               <g
-                transform={`translate(${cutX + cutW / 2}, ${
-                  op.wall === 'N'
-                    ? cutY - 18
-                    : op.wall === 'S'
-                    ? cutY + cutH + 20
-                    : cutY + cutH / 2
-                })`}
+                data-drag="room"
+                className="cursor-move hover:scale-105 transition-transform"
+                style={{ pointerEvents: 'auto' }}
+                onPointerDown={(e) => handleRoomDragStart(e, rm)}
               >
                 <rect
-                  x="-36"
-                  y="-12"
-                  width="72"
-                  height="24"
-                  rx="5"
-                  fill={isSelected ? colors.selectedGlow : colors.tagBg}
-                  stroke={isSelected ? '#ffffff' : colors.tagBorder}
-                  strokeWidth="1.5"
-                  style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))' }}
+                  x="-48"
+                  y="40"
+                  width="96"
+                  height="20"
+                  rx="10"
+                  fill={isSelected ? '#eff6ff' : '#f8fafc'}
+                  stroke={isSelected ? '#3b82f6' : '#cbd5e1'}
+                  strokeWidth="1.2"
                 />
                 <text
                   x="0"
-                  y="4"
+                  y="53"
                   textAnchor="middle"
-                  fill={isSelected ? '#000000' : colors.tagText}
-                  fontSize="12"
+                  fill={isSelected ? '#1d4ed8' : '#64748b'}
+                  fontSize="9.5"
                   fontFamily="system-ui, sans-serif"
                   fontWeight="bold"
                 >
-                  {label} · {formatDistance(w, unit)}
+                  ✢ Drag to Move
                 </text>
               </g>
             </g>
           );
         })}
 
-        {/* 8. Architectural CAD Dimension Strings & Tick Marks */}
+        {/* 8. Overall CAD Dimension Strings & Tick Marks */}
         {showDimensions && (
           <g className="pointer-events-none">
-            {/* North Dimension String (Overall Breadth) */}
+            {/* North Overall Width Dimension */}
             <g>
               {(() => {
-                const dimY = toScreenY(-wallT - 0.75);
-                const x1 = toScreenX(0);
-                const x2 = toScreenX(breadth);
+                const dimY = toScreenY(bounds.minY - extWallT - 0.75);
+                const x1 = toScreenX(bounds.minX);
+                const x2 = toScreenX(bounds.maxX);
                 return (
                   <>
-                    <line x1={x1} y1={toScreenY(-wallT)} x2={x1} y2={dimY - 8} stroke={colors.dimensionLine} strokeWidth="1" strokeDasharray="3 2" />
-                    <line x1={x2} y1={toScreenY(-wallT)} x2={x2} y2={dimY - 8} stroke={colors.dimensionLine} strokeWidth="1" strokeDasharray="3 2" />
+                    <line x1={x1} y1={toScreenY(bounds.minY - extWallT)} x2={x1} y2={dimY - 8} stroke={colors.dimensionLine} strokeWidth="1" strokeDasharray="3 2" />
+                    <line x1={x2} y1={toScreenY(bounds.minY - extWallT)} x2={x2} y2={dimY - 8} stroke={colors.dimensionLine} strokeWidth="1" strokeDasharray="3 2" />
                     <line x1={x1} y1={dimY} x2={x2} y2={dimY} stroke={colors.dimensionLine} strokeWidth="1.5" />
                     <line x1={x1 - 6} y1={dimY + 6} x2={x1 + 6} y2={dimY - 6} stroke={colors.dimensionLine} strokeWidth="2.2" />
                     <line x1={x2 - 6} y1={dimY + 6} x2={x2 + 6} y2={dimY - 6} stroke={colors.dimensionLine} strokeWidth="2.2" />
-                    <rect x={(x1 + x2) / 2 - 45} y={dimY - 16} width="90" height="20" fill={colors.bg} rx="3" />
+                    <rect x={(x1 + x2) / 2 - 50} y={dimY - 16} width="100" height="20" fill={colors.bg} rx="3" />
                     <text
                       x={(x1 + x2) / 2}
                       y={dimY - 2}
@@ -898,28 +1411,28 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
                       fontFamily="system-ui, monospace"
                       fontWeight="bold"
                     >
-                      {formatDistance(breadth, unit)}
+                      {formatDistance(bounds.width, unit)} (TOTAL)
                     </text>
                   </>
                 );
               })()}
             </g>
 
-            {/* West Dimension String (Overall Length) */}
+            {/* West Overall Length Dimension */}
             <g>
               {(() => {
-                const dimX = toScreenX(-wallT - 0.75);
-                const y1 = toScreenY(0);
-                const y2 = toScreenY(length);
+                const dimX = toScreenX(bounds.minX - extWallT - 0.75);
+                const y1 = toScreenY(bounds.minY);
+                const y2 = toScreenY(bounds.maxY);
                 return (
                   <>
-                    <line x1={toScreenX(-wallT)} y1={y1} x2={dimX - 8} y2={y1} stroke={colors.dimensionLine} strokeWidth="1" strokeDasharray="3 2" />
-                    <line x1={toScreenX(-wallT)} y1={y2} x2={dimX - 8} y2={y2} stroke={colors.dimensionLine} strokeWidth="1" strokeDasharray="3 2" />
+                    <line x1={toScreenX(bounds.minX - extWallT)} y1={y1} x2={dimX - 8} y2={y1} stroke={colors.dimensionLine} strokeWidth="1" strokeDasharray="3 2" />
+                    <line x1={toScreenX(bounds.minX - extWallT)} y1={y2} x2={dimX - 8} y2={y2} stroke={colors.dimensionLine} strokeWidth="1" strokeDasharray="3 2" />
                     <line x1={dimX} y1={y1} x2={dimX} y2={y2} stroke={colors.dimensionLine} strokeWidth="1.5" />
                     <line x1={dimX - 6} y1={y1 + 6} x2={dimX + 6} y2={y1 - 6} stroke={colors.dimensionLine} strokeWidth="2.2" />
                     <line x1={dimX - 6} y1={y2 + 6} x2={dimX + 6} y2={y2 - 6} stroke={colors.dimensionLine} strokeWidth="2.2" />
                     <g transform={`translate(${dimX - 12}, ${(y1 + y2) / 2}) rotate(-90)`}>
-                      <rect x="-45" y="-14" width="90" height="20" fill={colors.bg} rx="3" />
+                      <rect x="-50" y="-14" width="100" height="20" fill={colors.bg} rx="3" />
                       <text
                         x="0"
                         y="0"
@@ -929,107 +1442,17 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
                         fontFamily="system-ui, monospace"
                         fontWeight="bold"
                       >
-                        {formatDistance(length, unit)}
+                        {formatDistance(bounds.height, unit)} (TOTAL)
                       </text>
                     </g>
                   </>
                 );
               })()}
             </g>
-
-            {/* Sub-Dimension Strings for South Wall Openings */}
-            {openingsByWall.S.length > 0 && (
-              <g>
-                {(() => {
-                  const dimY = toScreenY(length + wallT + 0.65);
-                  const ops = openingsByWall.S;
-                  const pts = [0];
-                  ops.forEach((o) => {
-                    pts.push(o.position);
-                    pts.push(o.position + o.width);
-                  });
-                  pts.push(breadth);
-                  pts.sort((a, b) => a - b);
-
-                  const segments: Array<{ s: number; e: number }> = [];
-                  for (let i = 0; i < pts.length - 1; i++) {
-                    if (pts[i + 1] - pts[i] > 0.01) {
-                      segments.push({ s: pts[i], e: pts[i + 1] });
-                    }
-                  }
-
-                  return segments.map((seg, idx) => {
-                    const sx1 = toScreenX(seg.s);
-                    const sx2 = toScreenX(seg.e);
-                    const segLen = seg.e - seg.s;
-                    return (
-                      <g key={`s-dim-${idx}`}>
-                        <line x1={sx1} y1={dimY} x2={sx2} y2={dimY} stroke={colors.dimensionLine} strokeWidth="1.2" />
-                        <line x1={sx1 - 4} y1={dimY + 4} x2={sx1 + 4} y2={dimY - 4} stroke={colors.dimensionLine} strokeWidth="1.8" />
-                        <line x1={sx2 - 4} y1={dimY + 4} x2={sx2 + 4} y2={dimY - 4} stroke={colors.dimensionLine} strokeWidth="1.8" />
-                        {segLen >= 0.4 && (
-                          <text
-                            x={(sx1 + sx2) / 2}
-                            y={dimY + 14}
-                            textAnchor="middle"
-                            fill={colors.dimensionText}
-                            fontSize="12"
-                            fontFamily="system-ui, monospace"
-                            fontWeight="500"
-                          >
-                            {formatDistance(segLen, unit)}
-                          </text>
-                        )}
-                      </g>
-                    );
-                  });
-                })()}
-              </g>
-            )}
           </g>
         )}
 
-        {/* 9. Room Center Architectural Title Stamp */}
-        <g transform={`translate(${toScreenX(breadth / 2)}, ${toScreenY(length / 2)})`} className="pointer-events-none">
-          <text
-            x="0"
-            y="-14"
-            textAnchor="middle"
-            fill={colors.dimensionText}
-            fontSize="22"
-            fontFamily="system-ui, sans-serif"
-            fontWeight="bold"
-            letterSpacing="0.05em"
-          >
-            {room.name || 'MAIN ROOM'}
-          </text>
-          <text
-            x="0"
-            y="12"
-            textAnchor="middle"
-            fill={colors.innerLine}
-            fontSize="16"
-            fontFamily="system-ui, monospace"
-            fontWeight="600"
-          >
-            {unit === 'imperial'
-              ? `${(breadth * length * 10.7639).toFixed(1)} sq ft  (${(breadth * length).toFixed(2)} m²)`
-              : `${(breadth * length).toFixed(2)} m²  (${(breadth * length * 10.7639).toFixed(1)} sq ft)`}
-          </text>
-          <text
-            x="0"
-            y="32"
-            textAnchor="middle"
-            fill={colors.innerLine}
-            fontSize="13"
-            fontFamily="system-ui, monospace"
-            opacity="0.85"
-          >
-            Perimeter: {formatDistance(2 * (breadth + length), unit)}
-          </text>
-        </g>
-
-        {/* 10. Architectural North Compass Rose (Top Right of sheet) */}
+        {/* 9. Architectural North Compass Rose (Top Right of sheet) */}
         <g transform={`translate(${baseWidth - 65}, 65)`} className="pointer-events-none">
           <circle cx="0" cy="0" r="26" fill={colors.bg} stroke={colors.dimensionLine} strokeWidth="1.5" opacity="0.9" />
           <polygon points="0,-22 6,0 0,-5 -6,0" fill="#ef4444" />
@@ -1037,77 +1460,294 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
           <text x="0" y="-9" textAnchor="middle" fill="#ef4444" fontSize="12" fontWeight="bold">N</text>
         </g>
 
-        {/* ================================================================= */}
-        {/* 11. MATHEMATICALLY ACCURATE ARCHITECTURAL GRAPHIC SCALE BAR       */}
-        {/* Metric: exactly 100 units = 1.0 meter (2.0m total bar)            */}
-        {/* Imperial: exactly 30.48 units = 1.0 foot (6.0ft total bar)        */}
-        {/* ================================================================= */}
+        {/* 10. Architectural Dynamic Scale Bar (Bottom Left of sheet) */}
         {unit === 'metric' ? (
           <g transform={`translate(45, ${baseHeight - 50})`} className="pointer-events-none">
-            {/* Background card plate */}
             <rect x="-12" y="-22" width="224" height="48" fill={colors.bg} stroke={colors.gridMinor} strokeWidth="1" rx="6" opacity="0.95" />
-
-            {/* Alternating graphic scale segments (0 to 0.5m, 0.5m to 1.0m, 1.0m to 2.0m) */}
             <rect x="0" y="0" width="50" height="7" fill={colors.dimensionLine} stroke={colors.dimensionLine} strokeWidth="1" />
             <rect x="50" y="0" width="50" height="7" fill={colors.bg} stroke={colors.dimensionLine} strokeWidth="1" />
             <rect x="100" y="0" width="100" height="7" fill={colors.dimensionLine} stroke={colors.dimensionLine} strokeWidth="1" />
 
-            {/* Minor 10cm subdivision ticks */}
             {[10, 20, 30, 40, 60, 70, 80, 90].map((tx) => (
               <line key={tx} x1={tx} y1="-3" x2={tx} y2="0" stroke={colors.dimensionLine} strokeWidth="0.8" />
             ))}
 
-            {/* Major tick lines */}
             <line x1="0" y1="-6" x2="0" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
             <line x1="50" y1="-5" x2="50" y2="7" stroke={colors.dimensionLine} strokeWidth="1.2" />
             <line x1="100" y1="-6" x2="100" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
             <line x1="200" y1="-6" x2="200" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
 
-            {/* Tick labels */}
             <text x="0" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">0</text>
             <text x="50" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">0.5m</text>
             <text x="100" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">1.0m</text>
             <text x="200" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">2.0m</text>
 
-            {/* Scale ratio title */}
             <text x="100" y="-10" textAnchor="middle" fill={colors.innerLine} fontSize="11" fontWeight="bold" letterSpacing="0.05em">
               SCALE 1:50 · 1m = 100 UNITS
             </text>
           </g>
         ) : (
           <g transform={`translate(45, ${baseHeight - 50})`} className="pointer-events-none">
-            {/* Background card plate */}
             <rect x="-12" y="-22" width="208" height="48" fill={colors.bg} stroke={colors.gridMinor} strokeWidth="1" rx="6" opacity="0.95" />
-
-            {/* Imperial alternating segments (0 to 1ft, 1 to 2ft, 2 to 4ft, 4 to 6ft) */}
             <rect x="0" y="0" width="30.48" height="7" fill={colors.dimensionLine} stroke={colors.dimensionLine} strokeWidth="1" />
             <rect x="30.48" y="0" width="30.48" height="7" fill={colors.bg} stroke={colors.dimensionLine} strokeWidth="1" />
             <rect x="60.96" y="0" width="60.96" height="7" fill={colors.dimensionLine} stroke={colors.dimensionLine} strokeWidth="1" />
             <rect x="121.92" y="0" width="60.96" height="7" fill={colors.bg} stroke={colors.dimensionLine} strokeWidth="1" />
 
-            {/* 3-inch subdivision ticks */}
             {[7.62, 15.24, 22.86, 38.1, 45.72, 53.34].map((tx) => (
               <line key={tx} x1={tx} y1="-3" x2={tx} y2="0" stroke={colors.dimensionLine} strokeWidth="0.8" />
             ))}
 
-            {/* Major tick lines */}
             <line x1="0" y1="-6" x2="0" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
             <line x1="30.48" y1="-5" x2="30.48" y2="7" stroke={colors.dimensionLine} strokeWidth="1.2" />
             <line x1="60.96" y1="-6" x2="60.96" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
             <line x1="121.92" y1="-6" x2="121.92" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
             <line x1="182.88" y1="-6" x2="182.88" y2="7" stroke={colors.dimensionLine} strokeWidth="1.5" />
 
-            {/* Tick labels */}
             <text x="0" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">0</text>
             <text x="30.48" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">1'</text>
             <text x="60.96" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">2'</text>
             <text x="121.92" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">4'</text>
             <text x="182.88" y="20" textAnchor="middle" fill={colors.dimensionText} fontSize="11" fontFamily="system-ui, monospace" fontWeight="600">6'</text>
 
-            {/* Scale ratio title */}
             <text x="91.44" y="-10" textAnchor="middle" fill={colors.innerLine} fontSize="11" fontWeight="bold" letterSpacing="0.05em">
               SCALE 1/4" = 1'-0" · 1' = 30.5 UNITS
             </text>
+          </g>
+        )}
+
+        {/* 11. Magnetic Alignment Guide Lines */}
+        {alignmentGuides.x !== null && (
+          <g className="pointer-events-none">
+            <line
+              x1={toScreenX(alignmentGuides.x)}
+              y1={0}
+              x2={toScreenX(alignmentGuides.x)}
+              y2={baseHeight}
+              stroke="#06b6d4"
+              strokeWidth="1.5"
+              strokeDasharray="4 3"
+            />
+            <rect
+              x={toScreenX(alignmentGuides.x) - 40}
+              y={10}
+              width="80"
+              height="20"
+              rx="4"
+              fill="#0891b2"
+            />
+            <text
+              x={toScreenX(alignmentGuides.x)}
+              y={24}
+              textAnchor="middle"
+              fill="#ffffff"
+              fontSize="10"
+              fontFamily="system-ui, sans-serif"
+              fontWeight="bold"
+            >
+              SNAP ALIGN
+            </text>
+          </g>
+        )}
+
+        {alignmentGuides.y !== null && (
+          <g className="pointer-events-none">
+            <line
+              x1={0}
+              y1={toScreenY(alignmentGuides.y)}
+              x2={baseWidth}
+              y2={toScreenY(alignmentGuides.y)}
+              stroke="#06b6d4"
+              strokeWidth="1.5"
+              strokeDasharray="4 3"
+            />
+            <rect
+              x={10}
+              y={toScreenY(alignmentGuides.y) - 10}
+              width="80"
+              height="20"
+              rx="4"
+              fill="#0891b2"
+            />
+            <text
+              x={50}
+              y={toScreenY(alignmentGuides.y) + 4}
+              textAnchor="middle"
+              fill="#ffffff"
+              fontSize="10"
+              fontFamily="system-ui, sans-serif"
+              fontWeight="bold"
+            >
+              SNAP ALIGN
+            </text>
+          </g>
+        )}
+
+        {/* 12. Selected Room Resize Handles */}
+        {allRooms
+          .filter((rm) => rm.id === activeRoomId)
+          .map((rm) => {
+            const rx = rm.x || 0;
+            const ry = rm.y || 0;
+            const rw = rm.breadth;
+            const rh = rm.length;
+
+            return (
+              <g key={`resize-handles-${rm.id}`}>
+                {/* East wall handle */}
+                <g
+                  data-drag="resize"
+                  className="cursor-ew-resize group"
+                  onPointerDown={(e) => handleResizeStart(e, rm, 'right')}
+                >
+                  <rect
+                    x={toScreenX(rx + rw) - 5}
+                    y={toScreenY(ry + rh / 2) - 18}
+                    width="10"
+                    height="36"
+                    rx="5"
+                    fill="#2563eb"
+                    stroke="#ffffff"
+                    strokeWidth="1.5"
+                    style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.25))' }}
+                  />
+                  <line
+                    x1={toScreenX(rx + rw)}
+                    y1={toScreenY(ry + rh / 2) - 8}
+                    x2={toScreenX(rx + rw)}
+                    y2={toScreenY(ry + rh / 2) + 8}
+                    stroke="#ffffff"
+                    strokeWidth="1.5"
+                  />
+                </g>
+
+                {/* South wall handle */}
+                <g
+                  data-drag="resize"
+                  className="cursor-ns-resize group"
+                  onPointerDown={(e) => handleResizeStart(e, rm, 'bottom')}
+                >
+                  <rect
+                    x={toScreenX(rx + rw / 2) - 18}
+                    y={toScreenY(ry + rh) - 5}
+                    width="36"
+                    height="10"
+                    rx="5"
+                    fill="#2563eb"
+                    stroke="#ffffff"
+                    strokeWidth="1.5"
+                    style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.25))' }}
+                  />
+                  <line
+                    x1={toScreenX(rx + rw / 2) - 8}
+                    y1={toScreenY(ry + rh)}
+                    x2={toScreenX(rx + rw / 2) + 8}
+                    y2={toScreenY(ry + rh)}
+                    stroke="#ffffff"
+                    strokeWidth="1.5"
+                  />
+                </g>
+
+                {/* South-East corner handle */}
+                <g
+                  data-drag="resize"
+                  className="cursor-nwse-resize group"
+                  onPointerDown={(e) => handleResizeStart(e, rm, 'corner')}
+                >
+                  <rect
+                    x={toScreenX(rx + rw) - 7}
+                    y={toScreenY(ry + rh) - 7}
+                    width="14"
+                    height="14"
+                    rx="3"
+                    fill="#2563eb"
+                    stroke="#ffffff"
+                    strokeWidth="2"
+                    style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))' }}
+                  />
+                </g>
+              </g>
+            );
+          })}
+
+        {/* 13. Active Dragging Room Badge */}
+        {draggingRoomInfo && (
+          <g className="pointer-events-none">
+            {(() => {
+              const draggedRoom = allRooms.find((r) => r.id === draggingRoomInfo.roomId);
+              if (!draggedRoom) return null;
+              const rx = draggedRoom.x || 0;
+              const ry = draggedRoom.y || 0;
+              const rw = draggedRoom.breadth;
+              return (
+                <g transform={`translate(${toScreenX(rx + rw / 2)}, ${toScreenY(ry) - 28})`}>
+                  <rect
+                    x="-85"
+                    y="-14"
+                    width="170"
+                    height="28"
+                    rx="7"
+                    fill="#0f172a"
+                    stroke="#38bdf8"
+                    strokeWidth="2"
+                    style={{ filter: 'drop-shadow(0 6px 12px rgba(0,0,0,0.35))' }}
+                  />
+                  <text
+                    x="0"
+                    y="4"
+                    textAnchor="middle"
+                    fill="#ffffff"
+                    fontSize="12"
+                    fontFamily="system-ui, sans-serif"
+                    fontWeight="bold"
+                  >
+                    ✢ {draggedRoom.name} · X: {rx.toFixed(2)}m, Y: {ry.toFixed(2)}m
+                  </text>
+                </g>
+              );
+            })()}
+          </g>
+        )}
+
+        {/* 14. Active Dragging Opening Badge */}
+        {draggingOpeningInfo && (
+          <g className="pointer-events-none">
+            {(() => {
+              const pRoom = allRooms.find((r) => r.id === draggingOpeningInfo.roomId);
+              const op = pRoom?.openings.find((o) => o.id === draggingOpeningInfo.openingId);
+              if (!pRoom || !op) return null;
+              const rx = pRoom.x || 0;
+              const ry = pRoom.y || 0;
+              const cutCenter = op.wall === 'N' || op.wall === 'S'
+                ? { x: toScreenX(rx + op.position + op.width / 2), y: toScreenY(ry + (op.wall === 'N' ? -0.4 : pRoom.length + 0.4)) }
+                : { x: toScreenX(rx + (op.wall === 'W' ? -0.4 : pRoom.breadth + 0.4)), y: toScreenY(ry + op.position + op.width / 2) };
+              return (
+                <g transform={`translate(${cutCenter.x}, ${cutCenter.y})`}>
+                  <rect
+                    x="-75"
+                    y="-14"
+                    width="150"
+                    height="28"
+                    rx="7"
+                    fill="#0f172a"
+                    stroke="#38bdf8"
+                    strokeWidth="2"
+                    style={{ filter: 'drop-shadow(0 6px 12px rgba(0,0,0,0.35))' }}
+                  />
+                  <text
+                    x="0"
+                    y="4"
+                    textAnchor="middle"
+                    fill="#ffffff"
+                    fontSize="11.5"
+                    fontFamily="system-ui, sans-serif"
+                    fontWeight="bold"
+                  >
+                    ✢ {op.type.toUpperCase()} · {formatDistance(op.position, unit)}
+                  </text>
+                </g>
+              );
+            })()}
           </g>
         )}
       </svg>
