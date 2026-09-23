@@ -1423,27 +1423,6 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
           );
         })}
 
-        {/* 5. CAD ORIGIN DATUM MARKER - SNAPPED TO (0, 0) GRID CORNER */}
-        <g transform={`translate(${toScreenX(bounds.minX)}, ${toScreenY(bounds.minY)})`} className="pointer-events-none">
-          {/* Crosshair extending along grid axes */}
-          <line x1="-30" y1="0" x2="30" y2="0" stroke="#ef4444" strokeWidth="1.2" strokeDasharray="4 2" opacity="0.85" />
-          <line x1="0" y1="-30" x2="0" y2="30" stroke="#ef4444" strokeWidth="1.2" strokeDasharray="4 2" opacity="0.85" />
-
-          {/* Surveyor / CAD Datum Target Circle */}
-          <circle cx="0" cy="0" r="10" fill="none" stroke="#ef4444" strokeWidth="1.5" />
-          <path d="M 0 0 L 10 0 A 10 10 0 0 0 0 -10 Z" fill="#ef4444" opacity="0.65" />
-          <path d="M 0 0 L -10 0 A 10 10 0 0 0 0 10 Z" fill="#ef4444" opacity="0.65" />
-          <circle cx="0" cy="0" r="2.5" fill="#ffffff" />
-
-          {/* Snapped Corner Indicator Badge */}
-          <g transform="translate(-76, -28)">
-            <rect width="72" height="22" rx="4" fill="#ffffff" stroke="#ef4444" strokeWidth="1.2" style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.15))' }} />
-            <text x="36" y="15" textAnchor="middle" fill="#ef4444" fontSize="11" fontFamily="system-ui, monospace" fontWeight="bold">
-              (0, 0) SNAP
-            </text>
-          </g>
-        </g>
-
         {/* 6. Openings (Doors & Windows) across all rooms */}
         {allRooms.map((rm) => {
           const rx = rm.x || 0;
@@ -1563,6 +1542,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
               >
                 {/* Wall Opening Cutout */}
                 <rect
+                  data-opening-cutout="true"
                   x={cutX}
                   y={cutY}
                   width={cutW}
@@ -1590,6 +1570,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
                 {isDoor && (
                   <g>
                     <path
+                      data-door-arc="true"
                       d={arcPath}
                       fill="none"
                       stroke={isSelected ? colors.selectedGlow : colors.doorArc}
@@ -1597,6 +1578,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
                       strokeDasharray="4 3"
                     />
                     <line
+                      data-door-leaf="true"
                       x1={doorHingeX}
                       y1={doorHingeY}
                       x2={doorLeafEndX}
@@ -1606,6 +1588,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
                       strokeLinecap="round"
                     />
                     <circle
+                      data-door-handle="true"
                       cx={doorHingeX}
                       cy={doorHingeY}
                       r="4"
@@ -1648,39 +1631,49 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
                   </g>
                 )}
 
-                {/* Tag Badge */}
-                <g
-                  transform={`translate(${cutX + cutW / 2}, ${
+                {/* Opening Tag Badge */}
+                {(() => {
+                  const tagX = cutX + cutW / 2;
+                  const tagY =
                     op.wall === 'N'
                       ? cutY - 18
                       : op.wall === 'S'
                       ? cutY + cutH + 20
-                      : cutY + cutH / 2
-                  })`}
-                >
-                  <rect
-                    x="-36"
-                    y="-12"
-                    width="72"
-                    height="24"
-                    rx="5"
-                    fill={isSelected ? colors.selectedGlow : colors.tagBg}
-                    stroke={isSelected ? '#ffffff' : colors.tagBorder}
-                    strokeWidth="1.5"
-                    style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))' }}
-                  />
-                  <text
-                    x="0"
-                    y="4"
-                    textAnchor="middle"
-                    fill={isSelected ? '#000000' : colors.tagText}
-                    fontSize="12"
-                    fontFamily="system-ui, sans-serif"
-                    fontWeight="bold"
-                  >
-                    {label} · {formatDistance(w, unit)}
-                  </text>
-                </g>
+                      : cutY + cutH / 2;
+                  return (
+                    <g
+                      transform={`translate(${tagX}, ${tagY})`}
+                      style={{ pointerEvents: 'auto' }}
+                      className="cursor-move"
+                      onPointerDown={(e) => handleOpeningDragStart(e, rm.id!, op)}
+                    >
+                      <rect
+                        data-opening-tag-rect="true"
+                        x="-36"
+                        y="-12"
+                        width="72"
+                        height="24"
+                        rx="5"
+                        fill={isSelected ? colors.selectedGlow : colors.tagBg}
+                        stroke={isSelected ? '#ffffff' : colors.tagBorder}
+                        strokeWidth="1.5"
+                        style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))' }}
+                      />
+                      <text
+                        data-opening-tag-text="true"
+                        x="0"
+                        y="4"
+                        textAnchor="middle"
+                        fill={isSelected ? '#000000' : colors.tagText}
+                        fontSize="12"
+                        fontFamily="system-ui, sans-serif"
+                        fontWeight="bold"
+                      >
+                        {label} · {formatDistance(w, unit)}
+                      </text>
+                    </g>
+                  );
+                })()}
               </g>
             );
           });
@@ -1704,6 +1697,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
               {/* Type pill */}
               {rm.type && (
                 <rect
+                  data-room-type-pill="true"
                   x="-35"
                   y="-34"
                   width="70"
@@ -1716,6 +1710,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
               )}
               {rm.type && (
                 <text
+                  data-room-type-text="true"
                   x="0"
                   y="-22"
                   textAnchor="middle"
@@ -1771,8 +1766,9 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
                 {formatDistance(rm.breadth, unit)} × {formatDistance(rm.length, unit)}
               </text>
 
-              {/* Move Indicator badge in room stamp */}
+              {/* Move Indicator badge in room stamp (hidden in exported PNG/SVG) */}
               <g
+                data-export-ignore="true"
                 data-drag="room"
                 className="cursor-move hover:scale-105 transition-transform"
                 style={{ pointerEvents: 'auto' }}
@@ -1875,7 +1871,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
 
         {/* 11. Magnetic Alignment Guide Lines */}
         {alignmentGuides.x !== null && (
-          <g className="pointer-events-none">
+          <g data-export-ignore="true" className="pointer-events-none">
             <line
               x1={toScreenX(alignmentGuides.x)}
               y1={0}
@@ -1908,7 +1904,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
         )}
 
         {alignmentGuides.y !== null && (
-          <g className="pointer-events-none">
+          <g data-export-ignore="true" className="pointer-events-none">
             <line
               x1={0}
               y1={toScreenY(alignmentGuides.y)}
@@ -1940,7 +1936,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
           </g>
         )}
 
-        {/* 12. Selected Room Resize Handles */}
+        {/* 12. Selected Room Resize Handles (Hidden in exported PNG/SVG) */}
         {allRooms
           .filter((rm) => rm.id === activeRoomId)
           .map((rm) => {
@@ -1950,10 +1946,11 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
             const rh = rm.length;
 
             return (
-              <g key={`resize-handles-${rm.id}`}>
+              <g key={`resize-handles-${rm.id}`} data-export-ignore="true">
                 {/* East wall handle */}
                 <g
                   data-drag="resize"
+                  data-export-ignore="true"
                   className="cursor-ew-resize group"
                   onPointerDown={(e) => handleResizeStart(e, rm, 'right')}
                 >
@@ -1981,6 +1978,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
                 {/* South wall handle */}
                 <g
                   data-drag="resize"
+                  data-export-ignore="true"
                   className="cursor-ns-resize group"
                   onPointerDown={(e) => handleResizeStart(e, rm, 'bottom')}
                 >
@@ -2008,6 +2006,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
                 {/* South-East corner handle */}
                 <g
                   data-drag="resize"
+                  data-export-ignore="true"
                   className="cursor-nwse-resize group"
                   onPointerDown={(e) => handleResizeStart(e, rm, 'corner')}
                 >
@@ -2029,7 +2028,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
 
         {/* 13. Active Dragging Room Badge */}
         {draggingRoomInfo && (
-          <g className="pointer-events-none">
+          <g data-export-ignore="true" className="pointer-events-none">
             {(() => {
               const draggedRoom = allRooms.find((r) => r.id === draggingRoomInfo.roomId);
               if (!draggedRoom) return null;
@@ -2068,7 +2067,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
 
         {/* 14. Active Dragging Opening Badge */}
         {draggingOpeningInfo && (
-          <g className="pointer-events-none">
+          <g data-export-ignore="true" className="pointer-events-none">
             {(() => {
               const pRoom = allRooms.find((r) => r.id === draggingOpeningInfo.roomId);
               const op = pRoom?.openings.find((o) => o.id === draggingOpeningInfo.openingId);
@@ -2247,7 +2246,7 @@ const FloorPlan: React.FC<FloorPlanProps> = ({
 
           {/* Quick Reset or Hover Tooltip */}
           {isHoveringCompass && !isDraggingCompass && (
-            <g transform="translate(0, 102)" className="pointer-events-none">
+            <g data-export-ignore="true" transform="translate(0, 102)" className="pointer-events-none">
               <rect
                 x="-115"
                 y="-11"

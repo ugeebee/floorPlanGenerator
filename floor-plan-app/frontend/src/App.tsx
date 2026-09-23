@@ -751,7 +751,110 @@ function App() {
       gridRect.setAttribute('height', `${sheetHeight}`);
     }
 
-    clone.querySelectorAll('[data-drag]').forEach((el) => el.removeAttribute('data-drag'));
+    // 1. Remove all editor-only elements marked for export removal
+    clone.querySelectorAll('[data-export-ignore="true"]').forEach((el) => el.remove());
+
+    // 2. Remove all resize handles and room drag indicators by selector
+    clone
+      .querySelectorAll(
+        '[data-drag="resize"], [data-drag="room"], .cursor-ew-resize, .cursor-ns-resize, .cursor-nwse-resize'
+      )
+      .forEach((el) => el.remove());
+
+    // 3. Remove any residual text nodes/badges containing editor-only phrases (e.g. "Drag to Move", "SNAP ALIGN", etc.)
+    clone.querySelectorAll('text').forEach((textEl) => {
+      const text = textEl.textContent || '';
+      if (
+        text.includes('Drag to Move') ||
+        text.includes('SNAP ALIGN') ||
+        text.includes('Drag to Rotate') ||
+        text.includes('Double-Click to Reset') ||
+        text.includes('(0, 0) SNAP')
+      ) {
+        const parent = textEl.closest('g') || textEl;
+        parent.remove();
+      }
+    });
+
+    // 4. Normalize room floor outlines back to clean architectural CAD lines (remove selection glow & dashes)
+    clone.querySelectorAll('[data-interactive="room"]').forEach((el) => {
+      el.setAttribute('stroke', '#64748b');
+      el.setAttribute('stroke-width', '1.5');
+      el.removeAttribute('stroke-dasharray');
+      el.setAttribute('stroke-dasharray', 'none');
+      el.setAttribute('fill', '#ffffff');
+      el.removeAttribute('style');
+    });
+
+    // 5. Normalize room type pills back to clean neutral CAD styling
+    clone.querySelectorAll('[data-room-type-pill="true"]').forEach((el) => {
+      el.setAttribute('fill', '#f1f5f9');
+      el.setAttribute('stroke', '#cbd5e1');
+    });
+    clone.querySelectorAll('[data-room-type-text="true"]').forEach((el) => {
+      el.setAttribute('fill', '#64748b');
+    });
+
+    // 6. Normalize opening cutouts, door leaf & arc, and tags
+    clone.querySelectorAll('[data-opening-cutout="true"]').forEach((el) => {
+      el.setAttribute('stroke', '#64748b');
+      el.setAttribute('stroke-width', '1');
+      el.removeAttribute('stroke-dasharray');
+      el.setAttribute('stroke-dasharray', 'none');
+    });
+    clone.querySelectorAll('[data-door-arc="true"]').forEach((el) => {
+      el.setAttribute('stroke', '#94a3b8');
+    });
+    clone.querySelectorAll('[data-door-leaf="true"]').forEach((el) => {
+      el.setAttribute('stroke', '#0f172a');
+    });
+    clone.querySelectorAll('[data-door-handle="true"]').forEach((el) => {
+      el.setAttribute('fill', '#0f172a');
+    });
+    clone.querySelectorAll('[data-opening-tag-rect="true"]').forEach((el) => {
+      el.setAttribute('fill', '#ffffff');
+      el.setAttribute('stroke', '#cbd5e1');
+    });
+    clone.querySelectorAll('[data-opening-tag-text="true"]').forEach((el) => {
+      el.setAttribute('fill', '#1e293b');
+    });
+
+    // 7. Strip UI interactive cursor classes and data-* attributes
+    clone.querySelectorAll('*').forEach((el) => {
+      const cls = el.getAttribute('class');
+      if (cls) {
+        const cleaned = cls
+          .split(/\s+/)
+          .filter(
+            (c) =>
+              !c.startsWith('cursor-') &&
+              !c.startsWith('hover:') &&
+              !c.startsWith('active:') &&
+              c !== 'transition-colors' &&
+              c !== 'transition-transform' &&
+              c !== 'group' &&
+              c !== 'pointer-events-none'
+          )
+          .join(' ')
+          .trim();
+        if (cleaned) {
+          el.setAttribute('class', cleaned);
+        } else {
+          el.removeAttribute('class');
+        }
+      }
+
+      Array.from(el.attributes).forEach((attr) => {
+        if (
+          attr.name.startsWith('data-') &&
+          attr.name !== 'data-export-bg' &&
+          attr.name !== 'data-export-grid'
+        ) {
+          el.removeAttribute(attr.name);
+        }
+      });
+    });
+
     return { clone, sheetWidth, sheetHeight };
   };
 
